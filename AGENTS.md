@@ -95,15 +95,16 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 
 ## 决策笔记（重要改动必须留笔记）
 
-本仓库接入 DeepSeek Harness 的决策笔记体系。技能**全局安装**在本机：
+本仓库接入 DeepSeek Harness 的决策笔记体系，技能名 `write-notes-like-deepseek`。
 
-```
-C:\Users\ASUS\.agents\skills\write-notes-like-deepseek\SKILL.md
-```
+**不要在仓库里写技能的绝对路径**（会把本机用户名带进公开仓库，换机器也会失效）。
+`scripts/notes-verify.mjs` 按顺序探测技能位置：
+`NOTES_SKILL_DIR` → `~/.agents/skills/<技能名>` → `<repo>/.agents/skills/<技能名>` → `<repo>/.claude/skills/<技能名>`。
+换机器只需把技能装到其中任一位置，或设一次 `NOTES_SKILL_DIR`。
 
 上面那些「踩过的坑」「不变式」回答的是**现在必须怎样**；笔记回答的是**当初为什么这样定、放弃了什么**——这两件事 AGENTS.md 和代码都表达不了。
 
-1. 非平凡改动（改了行为、架构、跨文件契约、流程与工具链、测试策略、落盘/网络/配置格式）前，遵循上述 SKILL.md 写或更新笔记；机械性小改（样式、格式化、打标、不改行为的补丁、常规 CRUD）直接提交。
+1. 非平凡改动（改了行为、架构、跨文件契约、流程与工具链、测试策略、落盘/网络/配置格式）前，遵循技能里的写法写或更新笔记；机械性小改（样式、格式化、打标、不改行为的补丁、常规 CRUD）直接提交。
 2. 写之前先检索 `.agents/notes/` 里的同主题旧笔记：有归属就地更新；新想法先放 `proposed/`，落地随同代码改动转 `implemented/`；新方案彻底取代旧决策时，同批归档旧篇并标明被谁取代。
 3. 被放弃的方案先写它最强的理由，再解释为什么不用。
 4. 提交前跑 `pnpm verify-notes`（tree + format + archived 三线串跑），红了先修再交。

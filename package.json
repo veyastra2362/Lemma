@@ -12,8 +12,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "check": "pnpm typecheck && pnpm test",
-    "verify-notes": "npx --yes tsx C:/Users/ASUS/.agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts && npx --yes tsx C:/Users/ASUS/.agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts && npx --yes tsx C:/Users/ASUS/.agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts",
-    "archive-note": "npx --yes tsx C:/Users/ASUS/.agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts"
+    "verify-notes": "node scripts/notes-verify.mjs",
+    "archive-note": "node scripts/notes-verify.mjs --archive"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

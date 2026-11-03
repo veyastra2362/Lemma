@@ -88,3 +88,21 @@ src-tauri/target/**/*.dmp
 
 # ECDICT 原始 CSV（63MB，构建期下载）
 data/
+
+# ---------- Agent / 编辑器本地配置 ----------
+# 这些目录常含本机路径、会话记录、个人快捷键，公开仓库不该带。
+.claude/settings.local.json
+.cursor/
+.codex/
+.continue/
+.aider*
+# 决策笔记技能的本地副本：不 vendor（见 .agents/notes 里的接入笔记），
+# 万一有人本地装到项目里，也不要误提交。
+.agents/skills/
+
+# ---------- 其它常见残留 ----------
+pnpm-debug.log*
+.pnpm-store/
+.dccache/
+*.profraw
+*.lnk
