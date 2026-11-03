@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* 三个窗口都是透明窗口，根节点不能有底色，否则会出现黑色圆角。 */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  font-family:
+    "Microsoft YaHei UI", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+}
+
+/* 全应用禁止文本选中/拖拽，避免 HUD 被当成普通网页拖动。 */
+body {
+  user-select: none;
+  cursor: default;
+}
+
+:root {
+  --hud-surface: oklch(0.21 0.014 265 / 96%);
+  --hud-border: oklch(1 0 0 / 10%);
+  --hud-text: oklch(0.97 0.004 265);
+  --hud-muted: oklch(0.72 0.012 265);
+  --hud-accent: oklch(0.78 0.13 200);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 14%);
+  border-radius: 999px;
+}
