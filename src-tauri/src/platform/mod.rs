@@ -4,6 +4,7 @@
 //! `core/` 永远只通过这里导出的函数与类型访问操作系统。
 
 pub mod clipboard;
+pub mod console;
 pub mod keyboard;
 pub mod placement;
 pub mod uia;
@@ -52,6 +53,11 @@ pub fn uia_capture() -> uia::UiaOutcome {
 /// 模拟 Ctrl+C 把选区复制出来（T2 兜底）。
 pub fn copy_selection(timeout: std::time::Duration) -> Result<clipboard::ClipboardLease, String> {
     backend::copy_selection(timeout)
+}
+
+/// 把 stdout 挂到父进程控制台（探针模式用）。
+pub fn attach_parent_console() {
+    backend::attach_parent_console();
 }
 
 /// 还原剪贴板（由 `ClipboardLease::drop` 调用）。
