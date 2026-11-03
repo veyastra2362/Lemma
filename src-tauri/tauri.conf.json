@@ -31,6 +31,7 @@
         
       },
       {
+        "create": false,
         "label": "settings",
         "title": "Trans 设置",
         "url": "index.html#/settings",
@@ -49,6 +50,7 @@
         
       },
       {
+        "create": false,
         "label": "ocr-region",
         "title": "Trans 框选",
         "url": "index.html#/ocr-region",

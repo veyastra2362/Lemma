@@ -56,6 +56,11 @@ impl Perf {
         self.started_at.elapsed().as_secs_f64() * 1000.0
     }
 
+    /// 已呼出次数。预热收尾时用它判断"用户是否已经抢先呼出过"。
+    pub fn presents(&self) -> u64 {
+        self.hud_presents.load(Ordering::SeqCst)
+    }
+
     /// 记录一次呼出，返回本次的序号。
     pub fn begin_present(&self) -> u64 {
         let seq = self.hud_presents.fetch_add(1, Ordering::SeqCst) + 1;

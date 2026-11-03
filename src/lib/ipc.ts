@@ -9,6 +9,33 @@ export function isTauri(): boolean {
 }
 
 /**
+ * 带重试的 IPC 调用。
+ *
+ * WebView2 的 IPC 通道建立和页面模块执行之间存在竞争：窗口刚起来时
+ * `__TAURI_INTERNALS__` 已经存在，但 `invoke` 可能第一次就被拒。
+ * 这类失败必须重试，不能当成业务错误。
+ */
+async function withRetry<T>(
+  label: string,
+  op: () => Promise<T>,
+  attempts = 8,
+  delayMs = 60,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await op();
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error(
+    `${label} 失败：${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
+}
+
+/**
  * 命令名是 Rust 侧的契约，改名等于破坏前端。
  * 这里集中收口，避免各处散落字符串。
  */
@@ -16,7 +43,13 @@ export const ipc = {
   hudHide: () => invoke<void>("hud_hide"),
   hudToggle: () => invoke<void>("hud_toggle"),
   openSettings: () => invoke<void>("open_settings"),
+  frontendReady: (label: string) =>
+    withRetry("frontend_ready", () =>
+      invoke<void>("frontend_ready", { label }),
+    ),
   perfStats: () => invoke<RuntimeStats>("perf_stats"),
+  activeHotkey: () =>
+    withRetry("active_hotkey", () => invoke<string | null>("active_hotkey")),
   reportFirstPaint: (seq: number) => invoke<void>("report_first_paint", { seq }),
 };
 
@@ -24,14 +57,16 @@ export const ipc = {
 export function onHudPresented(
   handler: (seq: number) => void,
 ): Promise<UnlistenFn> {
-  return listen<number>("hud://presented", (event) => handler(event.payload));
+  return withRetry("listen(hud://presented)", () =>
+    listen<number>("hud://presented", (event) => handler(event.payload)),
+  );
 }
 
 /** 监听首帧结算结果，用于在界面上展示真实延迟。 */
 export function onFirstPaint(
   handler: (sample: PaintSample) => void,
 ): Promise<UnlistenFn> {
-  return listen<PaintSample>("perf://first-paint", (event) =>
-    handler(event.payload),
+  return withRetry("listen(perf://first-paint)", () =>
+    listen<PaintSample>("perf://first-paint", (event) => handler(event.payload)),
   );
 }

@@ -1,4 +1,5 @@
 import { useHudLifecycle } from "../hooks/useHudLifecycle";
+import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t } from "../i18n";
 import { useAppStore } from "../store/useAppStore";
 
@@ -12,7 +13,12 @@ function Hint({ label }: { label: string }) {
 
 export function ShellView() {
   useHudLifecycle();
+  useRuntimeInfo();
   const latencyMs = useAppStore((state) => state.latencyMs);
+  const hotkey = useAppStore((state) => state.hotkey);
+  const hotkeyLabel = hotkey
+    ? `${hotkey} 呼出 / 收起`
+    : t("hudHintHotkeyUnavailable");
 
   return (
     <div
@@ -53,7 +59,7 @@ export function ShellView() {
       </main>
 
       <footer className="flex shrink-0 items-center gap-2 border-t border-white/8 px-3 py-1.5">
-        <Hint label={t("hudHintShortcut")} />
+        <Hint label={hotkeyLabel} />
         <Hint label={t("hudHintEscape")} />
         <span className="ml-auto text-[11px] text-[var(--hud-muted)]">
           {t("hudHintSettings")}

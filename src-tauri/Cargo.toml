@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Trans - 高频深度阅读的轻量桌面辅助系统"
 authors = ["Trans"]
 edition = "2024"
-rust-version = "1.85"
+
 
 [lib]
 # lib/bin 同名在 Windows 上会冲突，见 rust-lang/cargo#8519

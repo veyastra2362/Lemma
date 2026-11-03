@@ -54,13 +54,15 @@ function Resolve-LogPath {
     return $candidates[0]
 }
 
-function Get-ProcessTreeWorkingSetMb {
+function Get-ProcessTreeMemory {
     param([int] $RootPid)
 
-    $all = Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, WorkingSetSize
+    $all = Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, WorkingSetSize, PrivatePageCount, Name
     $byParent = $all | Group-Object ParentProcessId -AsHashTable -AsString
 
-    $total = 0
+    $workingSet = 0
+    $private = 0
+    $details = [System.Collections.Generic.List[object]]::new()
     $seen = [System.Collections.Generic.HashSet[int]]::new()
     $queue = [System.Collections.Generic.Queue[int]]::new()
     $queue.Enqueue($RootPid)
@@ -70,7 +72,15 @@ function Get-ProcessTreeWorkingSetMb {
         if (-not $seen.Add($current)) { continue }
 
         $self = $all | Where-Object { $_.ProcessId -eq $current }
-        if ($self) { $total += [int64] $self.WorkingSetSize }
+        if ($self) {
+            $workingSet += [int64] $self.WorkingSetSize
+            $private += [int64] $self.PrivatePageCount
+            $details.Add([pscustomobject]@{
+                name        = $self.Name
+                working_mb  = [math]::Round($self.WorkingSetSize / 1MB, 1)
+                private_mb  = [math]::Round($self.PrivatePageCount / 1MB, 1)
+            })
+        }
 
         $children = $byParent["$current"]
         if ($children) {
@@ -78,7 +88,11 @@ function Get-ProcessTreeWorkingSetMb {
         }
     }
 
-    [math]::Round($total / 1MB, 1)
+    [pscustomobject]@{
+        working_set_mb = [math]::Round($workingSet / 1MB, 1)
+        private_mb     = [math]::Round($private / 1MB, 1)
+        processes      = $details
+    }
 }
 
 $exePath = Resolve-Exe $Exe
@@ -120,7 +134,7 @@ Start-Sleep -Seconds $SettleSeconds
 
 $process.Refresh()
 $mainRss = [math]::Round($process.WorkingSet64 / 1MB, 1)
-$treeRss = Get-ProcessTreeWorkingSetMb -RootPid $process.Id
+$tree = Get-ProcessTreeMemory -RootPid $process.Id
 $wallClockMs = [math]::Round(((Get-Date) - $startedAt).TotalMilliseconds, 0)
 
 $result = [ordered]@{
@@ -129,13 +143,19 @@ $result = [ordered]@{
     cold_start_ms   = $coldStartMs
     wall_clock_ms   = $wallClockMs
     rss_main_mb     = $mainRss
-    rss_tree_mb     = $treeRss
+    rss_tree_mb     = $tree.working_set_mb
+    private_tree_mb = $tree.private_mb
+    process_count   = $tree.processes.Count
     settle_seconds  = $SettleSeconds
-    note            = 'rss 不含按需加载的模型权重；含 WebView2 子进程'
+    note            = 'rss 为工作集之和（会重复计入共享页）；private 为私有提交，更接近"实际占用"。均不含按需加载的模型权重'
 }
 
 Write-Host ''
 $result.GetEnumerator() | ForEach-Object { '{0,-16} {1}' -f $_.Key, $_.Value }
+
+Write-Host ''
+Write-Host '进程树明细：'
+$tree.processes | Sort-Object private_mb -Descending | Format-Table -AutoSize
 
 $metricsDir = Join-Path $repoRoot '.metrics'
 New-Item -ItemType Directory -Force $metricsDir | Out-Null

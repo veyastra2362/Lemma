@@ -2,30 +2,16 @@ pub mod commands;
 pub mod core;
 pub mod platform;
 
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::Manager;
 
 use crate::core::{logs, perf::Perf, shell, shortcut, tray};
 use crate::platform::{PlatformWindow, window::WindowOps};
-
-/// 设置窗口关闭时只隐藏，不退出进程——应用常驻托盘。
-fn wire_settings_window<R: Runtime>(app: &AppHandle<R>) {
-    let Some(window) = app.get_webview_window(shell::SETTINGS_LABEL) else {
-        return;
-    };
-    let win = window.clone();
-    window.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            let _ = win.hide();
-            PlatformWindow::new(win.clone()).force_hide();
-        }
-    });
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(Perf::new())
+        .manage(shortcut::ActiveHotkey::default())
         // single-instance 必须最先注册，否则后面的插件会先把事件吃掉。
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             shell::present(app);
@@ -38,7 +24,9 @@ pub fn run() {
             commands::hud_hide,
             commands::hud_toggle,
             commands::open_settings,
+            commands::frontend_ready,
             commands::perf_stats,
+            commands::active_hotkey,
             commands::report_first_paint,
         ])
         .setup(|app| {
@@ -55,14 +43,15 @@ pub fn run() {
             if let Err(error) = tray::install(handle) {
                 logs::line(format!("tray failed: {error}"));
             }
-            if let Err(error) = shortcut::register_defaults(handle) {
-                logs::line(format!("shortcut failed: {error}"));
+            {
+                let state = app.state::<shortcut::ActiveHotkey>();
+                shortcut::install(handle, &state);
             }
-            wire_settings_window(handle);
 
             if let Some(window) = app.get_webview_window(shell::HUD_LABEL) {
                 PlatformWindow::new(window).configure_transparency();
             }
+            shell::prewarm(handle);
 
             logs::line(format!(
                 "startup tray-ready {:.1}ms",

@@ -48,12 +48,14 @@ export function useHudLifecycle(): void {
       shownAt.current = performance.now();
       requestAnimationFrame(() => {
         if (!disposed) {
-          void ipc.reportFirstPaint(seq);
+          void ipc.reportFirstPaint(seq).catch(() => undefined);
         }
       });
     }).then(keep);
 
-    void onFirstPaint((sample) => setLatencyMs(sample.total_ms)).then(keep);
+    void onFirstPaint((sample) => setLatencyMs(sample.total_ms))
+      .then(keep)
+      .catch(() => undefined);
 
     void getCurrentWindow()
       .onFocusChanged(({ payload: focused }) => {

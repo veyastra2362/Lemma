@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { ipc, isTauri } from "../lib/ipc";
 import { t } from "../i18n";
+import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { useAppStore } from "../store/useAppStore";
 
 const ROADMAP = [
@@ -24,9 +25,11 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 export function SettingsView() {
+  useRuntimeInfo();
   const stats = useAppStore((state) => state.stats);
   const setStats = useAppStore((state) => state.setStats);
   const latencyMs = useAppStore((state) => state.latencyMs);
+  const hotkey = useAppStore((state) => state.hotkey);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -74,6 +77,12 @@ export function SettingsView() {
             <Stat label={t("settingsStartup")} value={startup} />
             <Stat label={t("settingsPresents")} value={presents} />
             <Stat label={t("settingsLastPaint")} value={lastPaint} />
+          </div>
+          <div className="mt-2">
+            <Stat
+              label={t("settingsHotkey")}
+              value={hotkey ?? t("hudHintHotkeyUnavailable")}
+            />
           </div>
         </section>
 

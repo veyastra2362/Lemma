@@ -4,8 +4,11 @@
 //! `show` / `hide` / `set_position`。绝不在呼出路径上重建窗口——那会带来
 //! 白屏闪烁 + 几十毫秒的 WebView 初始化 + 内存泄漏。
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Runtime, WebviewWindow};
 
+use crate::core::logs;
 use crate::core::perf::Perf;
 use crate::platform::{self, PlatformWindow, placement, window::WindowOps};
 
@@ -15,6 +18,57 @@ pub const SETTINGS_LABEL: &str = "settings";
 /// 光标与浮层之间的物理像素间距。
 const CURSOR_GAP: i32 = 14;
 
+/// 预热窗口用的屏幕外坐标（远离任何真实显示器）。
+const OFFSCREEN: i32 = -32_000;
+
+/// 预热兜底超时：超时后强制收尾。
+const PREWARM_TIMEOUT_MS: u64 = 2_000;
+
+/// 是否处在"预热中"：窗口为加载 WebView 被临时显示在屏幕外。
+static PREWARMING: AtomicBool = AtomicBool::new(false);
+
+/// 预热 HUD。
+///
+/// 注意：`tauri.conf.json` 里 `visible: false` 的窗口，其 WebView **不会**在启动时
+/// 真正加载页面（settings / ocr-region 会加载，shell 不会，实测如此）。不预热的话，
+/// 用户第一次按热键看到的是"先白一下再出内容"。
+///
+/// 做法：把窗口挪到屏幕外 → 显示 → 等前端回报就绪后再藏回来。
+pub fn prewarm<R: Runtime>(app: &AppHandle<R>) {
+    let Some(window) = app.get_webview_window(HUD_LABEL) else {
+        return;
+    };
+    PREWARMING.store(true, Ordering::SeqCst);
+    let _ = window.set_position(PhysicalPosition::new(OFFSCREEN, OFFSCREEN));
+    let _ = window.show();
+    PlatformWindow::new(window).force_show();
+    logs::line("hud prewarm requested");
+
+    // 兜底：前端的就绪回报可能丢（IPC 通道建立时机有竞争），
+    // 超时后无论如何把预热窗口藏回去，否则它会一直停在屏幕外算作"可见"。
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(PREWARM_TIMEOUT_MS));
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || finish_prewarm(&handle));
+    });
+}
+
+/// 前端就绪后收尾预热：藏回窗口。
+///
+/// 如果用户在这一瞬间已经按了热键（presents > 0），就不要抢着把它藏掉。
+pub fn finish_prewarm<R: Runtime>(app: &AppHandle<R>) {
+    if !PREWARMING.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    if app.state::<Perf>().presents() > 0 {
+        logs::line("hud prewarm kept visible (user presented first)");
+        return;
+    }
+    hide(app);
+    logs::line("hud prewarm done");
+}
+
 /// 呼出 HUD：重新定位 → 显示 → 抢焦点 → 通知前端开始记首帧。
 pub fn present<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(HUD_LABEL) else {
@@ -23,6 +77,9 @@ pub fn present<R: Runtime>(app: &AppHandle<R>) {
     };
 
     let seq = app.state::<Perf>().begin_present();
+    // 用户主动呼出时，预热窗口已经变成"正在用的窗口"，不能再被收尾逻辑藏掉。
+    PREWARMING.store(false, Ordering::SeqCst);
+    logs::line(format!("hud present seq={seq}"));
 
     reposition(&window);
 
@@ -46,6 +103,12 @@ pub fn hide<R: Runtime>(app: &AppHandle<R>) {
 }
 
 pub fn toggle<R: Runtime>(app: &AppHandle<R>) {
+    // 预热窗口此刻是"屏幕外可见"的，直接按 is_visible 判断会把用户的操作变成隐藏。
+    if PREWARMING.swap(false, Ordering::SeqCst) {
+        present(app);
+        return;
+    }
+
     let Some(window) = app.get_webview_window(HUD_LABEL) else {
         return;
     };
@@ -84,15 +147,65 @@ fn reposition<R: Runtime>(window: &WebviewWindow<R>) {
     let _ = window.set_position(PhysicalPosition::new(target.origin.x, target.origin.y));
 }
 
+/// 按需获取窗口：已经存在就直接用，否则按 `tauri.conf.json` 里的声明构建。
+///
+/// settings / ocr-region 声明为 `"create": false`：三个窗口就是三个 WebView2
+/// 渲染进程，启动时全建出来会让常驻内存多出几百 MB。声明仍然保留在配置里
+/// （路由与透明配置依赖它），只是推迟到真正需要时再建。
+pub fn ensure_window<R: Runtime>(
+    app: &AppHandle<R>,
+    label: &str,
+) -> Result<WebviewWindow<R>, String> {
+    if let Some(window) = app.get_webview_window(label) {
+        return Ok(window);
+    }
+
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|candidate| candidate.label == label)
+        .cloned()
+        .ok_or_else(|| format!("窗口配置缺失：{label}"))?;
+
+    let window = tauri::WebviewWindowBuilder::from_config(app, &config)
+        .map_err(|e| format!("构建窗口 {label} 失败：{e}"))?
+        .build()
+        .map_err(|e| format!("创建窗口 {label} 失败：{e}"))?;
+
+    if let Some(icon) = app.default_window_icon() {
+        let _ = window.set_icon(icon.clone());
+    }
+    logs::line(format!("window created {label}"));
+    Ok(window)
+}
+
+/// 设置窗口只挂一次关闭事件：点 × 只是隐藏，进程继续常驻托盘。
+fn wire_settings_close<R: Runtime>(window: &WebviewWindow<R>) {
+    static WIRED: AtomicBool = AtomicBool::new(false);
+    if WIRED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    let win = window.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = win.hide();
+            PlatformWindow::new(win.clone()).force_hide();
+        }
+    });
+}
+
 /// 显示设置窗口。
 ///
 /// 注意这里必须分两步：先 `window.show()` 让宿主窗口出来，再显式给
 /// WebView 控制器同步一次尺寸并 `webview.show()`。只做前者时，之前被隐藏
 /// 过或尺寸为 0 的 WebView2 会在透明客户区外面留一圈可见边框。
 pub fn present_settings<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let window = app
-        .get_webview_window(SETTINGS_LABEL)
-        .ok_or_else(|| "设置窗口不存在".to_string())?;
+    let window = ensure_window(app, SETTINGS_LABEL)?;
+    wire_settings_close(&window);
 
     window.unminimize().map_err(|e| e.to_string())?;
     window.show().map_err(|e| e.to_string())?;
