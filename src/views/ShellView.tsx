@@ -2,6 +2,7 @@ import { useHudLifecycle } from "../hooks/useHudLifecycle";
 import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t } from "../i18n";
 import { useAppStore } from "../store/useAppStore";
+import type { Settings } from "../types";
 
 function Hint({ label }: { label: string }) {
   return (
@@ -11,14 +12,20 @@ function Hint({ label }: { label: string }) {
   );
 }
 
+function triggerLabel(settings: Settings | null): string {
+  if (!settings) {
+    return t("hudTriggerUnavailable");
+  }
+  return settings.trigger === "doubleControl"
+    ? t("hudTriggerDoubleControl")
+    : `${settings.hotkey} ${t("hudTriggerHotkeySuffix")}`;
+}
+
 export function ShellView() {
   useHudLifecycle();
   useRuntimeInfo();
   const latencyMs = useAppStore((state) => state.latencyMs);
-  const hotkey = useAppStore((state) => state.hotkey);
-  const hotkeyLabel = hotkey
-    ? `${hotkey} 呼出 / 收起`
-    : t("hudHintHotkeyUnavailable");
+  const settings = useAppStore((state) => state.settings);
 
   return (
     <div
@@ -46,7 +53,7 @@ export function ShellView() {
         </span>
         {latencyMs !== null && (
           <span className="ml-auto font-mono text-[11px] text-[var(--hud-accent)]">
-            {t("legacyLatency")} {latencyMs.toFixed(1)}ms
+            {t("latency")} {latencyMs.toFixed(1)}ms
           </span>
         )}
       </header>
@@ -59,7 +66,7 @@ export function ShellView() {
       </main>
 
       <footer className="flex shrink-0 items-center gap-2 border-t border-white/8 px-3 py-1.5">
-        <Hint label={hotkeyLabel} />
+        <Hint label={triggerLabel(settings)} />
         <Hint label={t("hudHintEscape")} />
         <span className="ml-auto text-[11px] text-[var(--hud-muted)]">
           {t("hudHintSettings")}

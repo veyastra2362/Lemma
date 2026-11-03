@@ -5,6 +5,7 @@
 use tauri::{AppHandle, Emitter, State};
 
 use crate::core::perf::{Perf, RuntimeStats};
+use crate::core::settings::{Settings, SettingsStore};
 
 /// 收起 HUD（前端失焦 / Esc 时调用）。
 #[tauri::command]
@@ -38,10 +39,40 @@ pub fn perf_stats(perf: State<'_, Perf>) -> RuntimeStats {
     perf.stats()
 }
 
-/// 当前实际生效的呼出热键（候选键可能都被别的程序占用，此时为 None）。
 #[tauri::command]
-pub fn active_hotkey(state: State<'_, crate::core::shortcut::ActiveHotkey>) -> Option<String> {
-    state.label()
+pub fn get_settings(store: State<'_, SettingsStore>) -> Settings {
+    store.get()
+}
+
+/// 更新触发方式 / 热键。
+///
+/// 新配置应用失败时（典型原因：热键被别的软件占用）**回滚到旧配置**并把错误返回给界面，
+/// 不允许出现「设置存下来了但实际不生效」这种状态。
+#[tauri::command]
+pub fn update_settings(
+    app: AppHandle,
+    store: State<'_, SettingsStore>,
+    trigger: crate::core::settings::Trigger,
+    hotkey: String,
+) -> Result<Settings, String> {
+    let previous = store.get();
+    let next = Settings {
+        trigger,
+        hotkey: hotkey.trim().to_string(),
+    };
+
+    let saved = store.set(next)?;
+    if let Err(error) = crate::core::trigger::apply(&app) {
+        let _ = store.set(previous.clone());
+        let _ = crate::core::trigger::apply(&app);
+        return Err(error);
+    }
+
+    crate::core::logs::line(format!(
+        "settings updated trigger={:?} hotkey={}",
+        saved.trigger, saved.hotkey
+    ));
+    Ok(saved)
 }
 
 /// 前端在 `requestAnimationFrame` 里回报「首帧已绘制」。

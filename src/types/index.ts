@@ -11,3 +11,12 @@ export interface PaintSample {
   seq: number;
   total_ms: number;
 }
+
+/** 呼出方式，与 Rust 侧 `core::settings::Trigger` 一一对应。 */
+export type Trigger = "doubleControl" | "hotkey";
+
+export interface Settings {
+  trigger: Trigger;
+  /** 形如 `Alt+Q`，仅在 trigger === "hotkey" 时生效。 */
+  hotkey: string;
+}

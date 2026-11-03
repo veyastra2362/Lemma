@@ -1,18 +1,87 @@
+# ============================================================
+# Trans · .gitignore
+#
+# 原则：
+#   1. 能由命令重新生成的，一律不进仓库（依赖、构建产物、模型、词库）。
+#   2. 机器/个人相关的东西不进仓库（本地设置、日志、性能基线、证书）。
+#   3. 锁定版本的文件要进仓库（Cargo.lock、pnpm-lock.yaml），
+#      否则同一份代码在不同机器上装出不同依赖。
+# ============================================================
+
+# ---------- 前端依赖与构建产物 ----------
 node_modules/
 dist/
-*.local
+dist-ssr/
 .vite/
-.DS_Store
+*.local
+.cache/
+coverage/
 
-# Rust
+# ---------- Rust / Tauri 构建产物 ----------
 src-tauri/target/
+# Tauri codegen 生成的权限 schema 与产物，重建即得
 src-tauri/gen/
+src-tauri/WixTools/
 
-# 本地资源（模型权重、词库产物不进仓库）
+# ---------- 端侧模型与词库（几百 MB，走下载/构建期生成） ----------
+# 模型权重、运行时 dylib、OCR 字典、redb 词库一律不进仓库。
+# 分发方式见 docs/PLAN.md M4/M5：构建期下载 + SHA-256 校验，或发布为 release asset。
 src-tauri/resources/ocr-bundle/
 src-tauri/resources/tts-bundle/
+src-tauri/resources/ocr/downloads/
+src-tauri/resources/tts/downloads/
+*.onnx
+*.onnx.data
+*.ort
 *.redb
 *.redb.lock
+*.fst
 
-# 性能基线输出
+# ---------- 本地配置 / 运行期数据 ----------
+# 应用自己的设置、日志、缓存都写在 %APPDATA%\dev.lunar.trans，不会落到仓库；
+# 这里挡的是开发时手动拷出来的副本。
+src-tauri/settings.local.json
+*.log
+logs/
+
+# ---------- 性能基线 ----------
+# 每次跑 scripts/perf-baseline.ps1 都会生成；要对比时看 CI 或本地文件即可。
+# 想留档某个版本的数字，请把结论写进 docs/PERF.md 而不是提交 JSON。
 .metrics/
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 密钥（永远不要提交） ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.p12
+secrets.json
+# Tauri 自动更新签名私钥
+*.key
+!src-tauri/keys/*.pub
+
+# ---------- 调试产物 ----------
+*.pdb
+*.dSYM/
+src-tauri/target/**/*.dmp
+
+# ============================================================
+# 明确要提交的东西（放在这里是为了防止后人误加规则）
+# ============================================================
+# !src-tauri/Cargo.lock         依赖锁定，必须提交
+# !pnpm-lock.yaml               同上
+# !src-tauri/icons/             icon 源文件与各尺寸产物（安装包要用）
+# !src-tauri/capabilities/      权限声明，属于安全边界
+# !scripts/                     质量门禁与基线脚本，CI 依赖
+# !docs/                        计划、性能口径、参考调研

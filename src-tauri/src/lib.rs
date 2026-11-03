@@ -4,14 +4,14 @@ pub mod platform;
 
 use tauri::Manager;
 
-use crate::core::{logs, perf::Perf, shell, shortcut, tray};
+use crate::core::settings::SettingsStore;
+use crate::core::{logs, perf::Perf, shell, tray, trigger};
 use crate::platform::{PlatformWindow, window::WindowOps};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(Perf::new())
-        .manage(shortcut::ActiveHotkey::default())
         // single-instance 必须最先注册，否则后面的插件会先把事件吃掉。
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             shell::present(app);
@@ -26,7 +26,8 @@ pub fn run() {
             commands::open_settings,
             commands::frontend_ready,
             commands::perf_stats,
-            commands::active_hotkey,
+            commands::get_settings,
+            commands::update_settings,
             commands::report_first_paint,
         ])
         .setup(|app| {
@@ -43,9 +44,12 @@ pub fn run() {
             if let Err(error) = tray::install(handle) {
                 logs::line(format!("tray failed: {error}"));
             }
-            {
-                let state = app.state::<shortcut::ActiveHotkey>();
-                shortcut::install(handle, &state);
+
+            // 设置要在 trigger 之前就位：trigger 装配时需要读它。
+            let data_dir = handle.path().app_data_dir()?;
+            app.manage(SettingsStore::load(&data_dir));
+            if let Err(error) = trigger::install(handle) {
+                logs::line(format!("trigger failed: {error}"));
             }
 
             if let Some(window) = app.get_webview_window(shell::HUD_LABEL) {

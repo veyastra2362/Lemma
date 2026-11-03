@@ -1,0 +1,94 @@
+//! 触发方式装配：双击 Ctrl 与全局热键二选一。
+//!
+//! 键盘观察是**常驻安装**的（安装/卸载低级钩子代价高、且卸载时机容易出竞态），
+//! 是否真的呼出由设置决定——所以切换触发方式只是改一个判断，不需要动钩子。
+
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+use tauri::{AppHandle, Manager, Runtime};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+use crate::core::double_tap::DoubleTap;
+use crate::core::settings::{SettingsStore, Trigger};
+use crate::core::{logs, shell};
+use crate::platform;
+
+/// 安装键盘观察，并按当前设置装配热键。
+pub fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let detector = Arc::new(Mutex::new(DoubleTap::default()));
+    let handle = app.clone();
+
+    platform::watch_keyboard(move |signal| {
+        let fired = {
+            let Ok(mut guard) = detector.lock() else {
+                return;
+            };
+            guard.on_signal(signal, Instant::now())
+        };
+        if !fired {
+            return;
+        }
+
+        // 钩子回调在平台线程里，窗口操作要回到主线程。
+        let check = handle.clone();
+        let inner = handle.clone();
+        let _ = check.run_on_main_thread(move || {
+            if inner.state::<SettingsStore>().get().trigger == Trigger::DoubleControl {
+                logs::line("trigger double-tap fits");
+                shell::toggle(&inner);
+            }
+        });
+    })?;
+    logs::line("keyboard watch installed");
+
+    apply(app)
+}
+
+/// 按当前设置重新装配热键（幂等，可以反复调用）。
+pub fn apply<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let settings = app.state::<SettingsStore>().get();
+    let manager = app.global_shortcut();
+    manager.unregister_all().map_err(|e| e.to_string())?;
+
+    if settings.trigger != Trigger::Hotkey {
+        logs::line("trigger mode doubleControl");
+        return Ok(());
+    }
+
+    let shortcut: Shortcut = settings
+        .hotkey
+        .parse()
+        .map_err(|e| format!("热键格式不正确「{}」：{e}", settings.hotkey))?;
+
+    manager
+        .on_shortcut(shortcut, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                shell::toggle_on_main(app);
+            }
+        })
+        .map_err(|e| format!("注册热键「{}」失败：{e}", settings.hotkey))?;
+
+    logs::line(format!("trigger hotkey {}", settings.hotkey));
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 前端录制出来的热键字符串必须能被解析。
+    /// 实测 `Alt+Q` 与 `Alt+KeyQ` 两种写法都能过，前端用更易读的前者。
+    #[test]
+    fn user_facing_hotkey_strings_parse() {
+        for raw in ["Alt+Q", "Ctrl+Shift+D", "Alt+Shift+Q", "Alt+Digit1"] {
+            assert!(raw.parse::<Shortcut>().is_ok(), "热键写法无法解析：{raw}");
+        }
+    }
+
+    #[test]
+    fn garbage_hotkey_is_rejected() {
+        assert!("".parse::<Shortcut>().is_err());
+        assert!("不是热键".parse::<Shortcut>().is_err());
+    }
+}

@@ -46,7 +46,8 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 4. **`visible: false` 的窗口，其 WebView 不一定会加载页面**（实测 shell 不加载，
    settings/ocr-region 加载）。所以 HUD 需要显式预热，见 `core::shell::prewarm`。
 5. **注册全局热键会撞车**（本机 Alt+Q 已被占用）。`RegisterHotKey` 是独占的，
-   必须准备候选键并把"实际生效的那个"显示到界面上，不要静默失败。
+   所以默认触发放到「双击 Ctrl」，热键模式只是可选项；注册失败必须**回滚到旧配置**
+   并把原因返回给界面（见 `commands::update_settings`），不能出现「存下来了但不生效」。
 6. **WebView2 的 IPC 通道建立和页面模块执行有竞争**：`__TAURI_INTERNALS__` 已存在时
    `invoke` 仍可能第一次被拒。前端 IPC 调用统一走 `withRetry`（见 `src/lib/ipc.ts`）。
 
@@ -74,11 +75,20 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 - 报内存必须写清口径：是否含模型权重、是否含 WebView2 子进程。
 - 报 OCR/TTS 延迟必须区分冷启动与热态。
 
-## 不要做
+## 安全边界（不要突破）
 
+- **只允许存在一个键盘钩子**：`platform/windows/keyboard.rs` 里那个 `WH_KEYBOARD_LL`，
+  且必须是**只读**的——回调里只把 `KeySignal` 塞进 channel 然后 `CallNextHookEx`，
+  不吞键、不改键、不阻塞、不做 I/O、不记录按键内容。
+- 不得新增其它任何钩子（`SetWindowsHookEx` 的其它 hook id 一律禁止）。
+- 不得注入 DLL、不打补丁、不 hook 窗口消息。
+- 模拟输入只允许出现在 M6 的「回填」兜底路径，且必须严格保存/恢复剪贴板全格式。
 - 不要提交密钥或 API key。
 - 不要为了方便而放宽 CSP。
-- 不要装全局键盘钩子、不要注入 DLL（见 README「安全边界」）。
 - 不要自动 `git push`。
 - 不要引用 / 拷贝 `LunarFlow42/TransPortal` 的源码：它没有 LICENSE 文件，
   只作为架构与踩坑的参考，实现自己写。
+
+> 为什么允许这一个钩子：`RegisterHotKey` 只能注册「修饰键 + 主键」的组合，
+> 表达不了「双击 Ctrl」这种时序动作，而双击 Ctrl 是主要用户的呼出习惯。
+> 代价是杀软可能关注，所以把边界压到最小并写死在这里。

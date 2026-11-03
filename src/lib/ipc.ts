@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import type { PaintSample, RuntimeStats } from "../types";
+import type { PaintSample, RuntimeStats, Settings, Trigger } from "../types";
 
 /** 是否跑在 Tauri 宿主里（`pnpm dev` 直接开浏览器时为 false）。 */
 export function isTauri(): boolean {
@@ -48,8 +48,11 @@ export const ipc = {
       invoke<void>("frontend_ready", { label }),
     ),
   perfStats: () => invoke<RuntimeStats>("perf_stats"),
-  activeHotkey: () =>
-    withRetry("active_hotkey", () => invoke<string | null>("active_hotkey")),
+  getSettings: () =>
+    withRetry("get_settings", () => invoke<Settings>("get_settings")),
+  /** 应用失败（如热键被占用）会 reject，Rust 侧已回滚到旧配置。 */
+  updateSettings: (next: { trigger: Trigger; hotkey: string }) =>
+    invoke<Settings>("update_settings", next),
   reportFirstPaint: (seq: number) => invoke<void>("report_first_paint", { seq }),
 };
 

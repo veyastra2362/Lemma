@@ -14,3 +14,6 @@ pub(crate) fn cursor_position() -> Option<Point> {
 pub(crate) fn work_area_at(_point: Point) -> Option<Rect> {
     None
 }
+
+mod keyboard;
+pub(crate) use keyboard::watch as watch_keyboard;

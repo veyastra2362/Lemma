@@ -4,13 +4,13 @@ import { ipc, isTauri } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
 
 /**
- * 拉一次运行期信息：当前生效的呼出热键。
+ * 拉一次运行期设置（触发方式与热键）。
  *
- * 热键是独占资源，可能被别的软件占掉，所以界面必须显示「真正生效的那个」，
- * 而不是硬编码在文案里的默认值。
+ * 热键是独占资源，双击 Ctrl 也可能因为钩子装不上而失效，所以界面必须显示
+ * 「真正生效的那个」，而不是把默认值硬编码到文案里。
  */
 export function useRuntimeInfo(): void {
-  const setHotkey = useAppStore((state) => state.setHotkey);
+  const setSettings = useAppStore((state) => state.setSettings);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -18,19 +18,15 @@ export function useRuntimeInfo(): void {
     }
     let disposed = false;
     void ipc
-      .activeHotkey()
-      .then((hotkey) => {
+      .getSettings()
+      .then((settings) => {
         if (!disposed) {
-          setHotkey(hotkey);
+          setSettings(settings);
         }
       })
-      .catch(() => {
-        if (!disposed) {
-          setHotkey(null);
-        }
-      });
+      .catch(() => undefined);
     return () => {
       disposed = true;
     };
-  }, [setHotkey]);
+  }, [setSettings]);
 }

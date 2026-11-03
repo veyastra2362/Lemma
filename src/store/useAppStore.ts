@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { RuntimeStats } from "../types";
+import type { RuntimeStats, Settings } from "../types";
 
 interface AppState {
   stats: RuntimeStats | null;
@@ -8,9 +8,9 @@ interface AppState {
   /** 最近一次「热键 → 首帧」耗时，由 perf://first-paint 事件写入。 */
   latencyMs: number | null;
   setLatencyMs: (ms: number) => void;
-  /** 当前实际生效的呼出热键；null 表示候选键全被占用。 */
-  hotkey: string | null;
-  setHotkey: (hotkey: string | null) => void;
+  /** 当前生效的设置；null 表示还没读到。 */
+  settings: Settings | null;
+  setSettings: (settings: Settings) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -18,6 +18,6 @@ export const useAppStore = create<AppState>((set) => ({
   setStats: (stats) => set({ stats }),
   latencyMs: null,
   setLatencyMs: (latencyMs) => set({ latencyMs }),
-  hotkey: null,
-  setHotkey: (hotkey) => set({ hotkey }),
+  settings: null,
+  setSettings: (settings) => set({ settings }),
 }));

@@ -119,6 +119,16 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// 从任意线程安全地切换 HUD。
+///
+/// 键盘钩子回调与全局热键回调都可能不在主线程，窗口操作必须回到主线程做。
+pub fn toggle_on_main<R: Runtime>(app: &AppHandle<R>) {
+    let runner = app.clone();
+    let inner = app.clone();
+    // 已经在主线程时 Tauri 会内联执行，不会死锁。
+    let _ = runner.run_on_main_thread(move || toggle(&inner));
+}
+
 /// 把 HUD 挪到光标附近，并钳制在光标所在显示器的工作区内。
 fn reposition<R: Runtime>(window: &WebviewWindow<R>) {
     let Some(cursor) = platform::cursor_position() else {

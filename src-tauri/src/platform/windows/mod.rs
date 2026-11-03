@@ -52,3 +52,6 @@ pub(crate) fn work_area_at(point: Point) -> Option<Rect> {
         },
     ))
 }
+
+mod keyboard;
+pub(crate) use keyboard::watch as watch_keyboard;
