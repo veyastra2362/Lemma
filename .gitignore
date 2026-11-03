@@ -85,3 +85,6 @@ src-tauri/target/**/*.dmp
 # !src-tauri/capabilities/      权限声明，属于安全边界
 # !scripts/                     质量门禁与基线脚本，CI 依赖
 # !docs/                        计划、性能口径、参考调研
+
+# ECDICT 原始 CSV（63MB，构建期下载）
+data/

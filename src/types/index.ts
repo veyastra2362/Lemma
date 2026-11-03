@@ -24,12 +24,28 @@ export interface Settings {
 /** 取词命中的档位，与 Rust 侧 `core::selection::Tier` 对应。 */
 export type CaptureTier = "selection" | "word" | "clipboard";
 
+/** 词库词条，与 Rust 侧 `core::dict::Entry` 对应。 */
+export interface Entry {
+  word: string;
+  phonetic: string;
+  /** 中文释义，多义项用 \n 分隔。 */
+  translation: string;
+  definition: string;
+  pos: string;
+  tag: string;
+  exchange: string;
+  bnc: number;
+  frq: number;
+}
+
 export interface Capture {
   text: string;
   sentence: string;
   paragraph: string;
   /** null 表示这次没取到。 */
   tier: CaptureTier | null;
+  /** 词库命中的词条；未收录或没装词库时为 null。 */
+  entry: Entry | null;
   /** 来源进程名，诊断用。 */
   app: string;
   elapsedMs: number;

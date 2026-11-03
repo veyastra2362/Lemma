@@ -66,13 +66,50 @@ function CaptureBody({ capture }: { capture: Capture | null }) {
         )}
       </div>
 
-      {capture.sentence && capture.sentence !== capture.text && (
+      {capture.entry?.phonetic && (
+        <p className="font-mono text-[12px] text-[var(--hud-muted)]">
+          /{capture.entry.phonetic}/
+        </p>
+      )}
+
+      {capture.entry?.translation && (
+        <div className="mt-0.5 space-y-0.5">
+          {capture.entry.translation
+            .split("\n")
+            .filter((line) => line.trim().length > 0)
+            .slice(0, 4)
+            .map((line, index) => (
+              <p
+                key={`${index}-${line.slice(0, 8)}`}
+                className="text-[13px] leading-relaxed"
+              >
+                {line}
+              </p>
+            ))}
+        </div>
+      )}
+
+      {capture.entry?.tag && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {capture.entry.tag.split(" ").slice(0, 6).map((tag) => (
+            <span
+              key={tag}
+              className="rounded border border-white/10 px-1 py-0.5 text-[10px] text-[var(--hud-muted)]"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {!capture.entry && capture.sentence && capture.sentence !== capture.text && (
         <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-[var(--hud-muted)]">
           {capture.sentence}
         </p>
       )}
 
       <p className="mt-1 font-mono text-[10px] text-[var(--hud-muted)]/70">
+        {capture.entry ? "" : "词库未收录 · "}
         {t("hudCaptureFrom")} {capture.app || "?"} · {capture.elapsedMs.toFixed(0)}ms
       </p>
     </>

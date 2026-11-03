@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::core::dict::{self, Entry};
 use crate::core::text::sentence_containing;
 use crate::platform::{self, clipboard, uia::UiaOutcome};
 
@@ -48,6 +49,8 @@ pub struct Capture {
     pub paragraph: String,
     /// None 表示这次没取到。
     pub tier: Option<Tier>,
+    /// 词库命中的词条；没装词库或未收录时为 None。
+    pub entry: Option<Entry>,
     /// 来源进程名，纯诊断用。
     pub app: String,
     pub elapsed_ms: f64,
@@ -93,7 +96,7 @@ fn store(capture: &Capture) {
     // 只记前 40 字符：够定位问题，又不至于把用户读的东西整段留在日志里。
     let preview: String = capture.text.chars().take(40).collect();
     crate::core::logs::line(format!(
-        "capture tier={} app={} elapsed={:.0}ms err={} text={preview}",
+        "capture tier={} app={} elapsed={:.0}ms dict={} err={} text={preview}",
         capture.tier.map(Tier::label).unwrap_or("-"),
         if capture.app.is_empty() {
             "?"
@@ -101,6 +104,7 @@ fn store(capture: &Capture) {
             &capture.app
         },
         capture.elapsed_ms,
+        if capture.entry.is_some() { "hit" } else { "-" },
         capture.error.as_deref().unwrap_or("-")
     ));
 }
@@ -111,9 +115,11 @@ pub fn capture() -> Capture {
     let uia = platform::uia_capture();
 
     if let Some((tier, text)) = pick_uia(&uia) {
+        let entry = dict::lookup_global(&text);
         let result = Capture {
             sentence: sentence_containing(&uia.paragraph, &text),
             paragraph: uia.paragraph,
+            entry,
             text,
             tier: Some(tier),
             app: uia.app,
@@ -143,6 +149,7 @@ pub fn capture() -> Capture {
                     // 剪贴板里只有选区文本，没有段落，句子就取它自己。
                     sentence: text.clone(),
                     paragraph: text.clone(),
+                    entry: dict::lookup_global(&text),
                     text,
                     tier: Some(Tier::Clipboard),
                     app: uia.app,

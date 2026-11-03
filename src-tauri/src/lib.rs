@@ -47,7 +47,22 @@ pub fn run() {
                 logs::line(format!("tray failed: {error}"));
             }
 
-            // 设置要在 trigger 之前就位：trigger 装配时需要读它。
+            // 词库：存在才装。没导入过也不影响取词，只是没有释义。
+            if let Some(path) = crate::core::paths::dict_path()
+                && path.exists()
+            {
+                match crate::core::dict::DictStore::open(&path) {
+                    Ok(store) => {
+                        let count = store.len();
+                        crate::core::dict::install(std::sync::Arc::new(store));
+                        logs::line(format!("dict loaded {count} entries"));
+                    }
+                    Err(error) => logs::line(format!("dict open failed: {error}")),
+                }
+            } else {
+                logs::line("dict missing (run --import-dict)");
+            }
+
             let data_dir = handle.path().app_data_dir()?;
             app.manage(SettingsStore::load(&data_dir));
             if let Err(error) = trigger::install(handle) {
@@ -68,3 +83,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("Trans 启动失败");
 }
+pub mod cli;
