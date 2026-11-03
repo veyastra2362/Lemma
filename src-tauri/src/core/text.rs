@@ -75,6 +75,36 @@ fn sentence_ranges(text: &str) -> Vec<(usize, usize)> {
     ranges
 }
 
+/// 判断一个字符是不是"不该算进词里"的边界字符。
+///
+/// 为什么需要：UIA 的 `TextUnit_Word` 对中日韩文本只在空白/标点处断词，
+/// 实测会把尾随标点（`当前进度：`）甚至替换符（`测智\u{FFFD}`）一起带出来。
+fn is_boundary_char(ch: char) -> bool {
+    if ch.is_whitespace() || ch.is_control() {
+        return true;
+    }
+
+    match ch as u32 {
+        // 零宽、双向控制、变体选择符、未分配替换
+        0x200B..=0x200F | 0x202A..=0x202E | 0xFE00..=0xFE0F | 0xFFF0..=0xFFFD => true,
+        // 通用标点（…、—、引号等）
+        0x2000..=0x206F => true,
+        // CJK 标点与兼容形式
+        0x3000..=0x303F | 0xFE30..=0xFE6F => true,
+        // 全角标点（保留全角数字 0xFF10..=0xFF19）
+        0xFF01..=0xFF0F | 0xFF1A..=0xFF20 | 0xFF3B..=0xFF40 | 0xFF5B..=0xFF65 => true,
+        // 箭头 / 数学 / 几何图形 / 杂项符号 / emoji
+        0x2190..=0x2BFF | 0x1F000..=0x1FAFF => true,
+        // ASCII 标点，但撇号与连字符是词的一部分（don't / e-mail）
+        _ => ch.is_ascii_punctuation() && ch != '\'' && ch != '-',
+    }
+}
+
+/// 去掉词首尾的标点、符号与不可见字符，只处理两端。
+pub fn trim_word(raw: &str) -> String {
+    raw.trim_matches(is_boundary_char).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,6 +153,38 @@ mod tests {
         assert_eq!(sentence_containing("", "x"), "");
         assert_eq!(sentence_containing("   ", "x"), "");
         assert_eq!(sentence_containing("只有一句。", ""), "只有一句。");
+    }
+
+    #[test]
+    fn trim_word_drops_trailing_cjk_punctuation() {
+        // 实测案例：UIA 把 `当前进度：多服务商` 切成 `当前进度：`
+        assert_eq!(trim_word("当前进度："), "当前进度");
+        assert_eq!(trim_word("门槛。"), "门槛");
+        assert_eq!(trim_word("（括号）"), "括号");
+    }
+
+    #[test]
+    fn trim_word_drops_ascii_punctuation_but_keeps_inner() {
+        assert_eq!(trim_word("threshold,"), "threshold");
+        assert_eq!(trim_word("(threshold)"), "threshold");
+        assert_eq!(trim_word("don't"), "don't");
+        assert_eq!(trim_word("e-mail"), "e-mail");
+        assert_eq!(trim_word("well-known."), "well-known");
+    }
+
+    #[test]
+    fn trim_word_drops_invisible_and_symbol_chars() {
+        // 截图里的 `测智` 后面跟了个替换符方框
+        assert_eq!(trim_word("测智\u{FFFD}"), "测智");
+        assert_eq!(trim_word("测智□"), "测智");
+        assert_eq!(trim_word("\u{200B}threshold"), "threshold");
+        assert_eq!(trim_word("threshold\u{FE0F}"), "threshold");
+    }
+
+    #[test]
+    fn trim_word_can_empty_out() {
+        assert_eq!(trim_word("：。！"), "");
+        assert_eq!(trim_word("  "), "");
     }
 
     #[test]

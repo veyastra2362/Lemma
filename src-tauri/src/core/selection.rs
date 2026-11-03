@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::dict::{self, Entry};
 use crate::core::settings::CaptureMode;
-use crate::core::text::sentence_containing;
+use crate::core::text::{sentence_containing, trim_word};
 use crate::platform::{self, clipboard, uia::UiaOutcome};
 
 /// 等剪贴板变化的上限。给低了会在慢应用上误判失败，给高了用户会觉得卡。
@@ -71,7 +71,15 @@ pub fn pick_uia(outcome: &UiaOutcome, mode: CaptureMode) -> Option<(Tier, String
     }
 
     let selection = clean(&outcome.selection).map(|text| (Tier::Selection, text));
-    let word = clean(&outcome.word).map(|text| (Tier::Word, text));
+
+    // 光标词必须洗掉首尾标点：UIA 的 WordUnit 对中文只按标点/空白断词，
+    // 会带出 `当前进度：` 这种尾随标点，甚至 `测智\u{FFFD}` 这种替换符。
+    let word = outcome
+        .word
+        .as_deref()
+        .map(trim_word)
+        .filter(|text| !text.is_empty())
+        .map(|text| (Tier::Word, text));
 
     match mode {
         // 只认选区：浏览器推荐这一档——实测 Chrome 选区 8ms 且稳定，悬停取词不稳定。
@@ -138,7 +146,7 @@ pub fn capture(mode: CaptureMode) -> Capture {
 
     let result = match clipboard::copy_selection(CLIPBOARD_TIMEOUT) {
         Ok(lease) => {
-            let text = lease.text.trim().to_string();
+            let text = trim_word(&lease.text);
             // 立刻还剪贴板，别让用户的剪贴板停在中间状态。
             drop(lease);
             if text.is_empty() {
@@ -218,6 +226,19 @@ mod tests {
     fn text_is_trimmed() {
         let picked = pick_uia(&outcome(Some("  padded  "), None), CaptureMode::Auto).unwrap();
         assert_eq!(picked.1, "padded");
+    }
+
+    #[test]
+    fn cursor_word_loses_trailing_punctuation() {
+        let picked = pick_uia(&outcome(None, Some("当前进度：")), CaptureMode::Auto)
+            .expect("应该命中光标词");
+        assert_eq!(picked.0, Tier::Word);
+        assert_eq!(picked.1, "当前进度");
+    }
+
+    #[test]
+    fn a_word_that_is_only_punctuation_counts_as_missing() {
+        assert!(pick_uia(&outcome(None, Some("：。")), CaptureMode::Auto).is_none());
     }
 
     #[test]
