@@ -10,7 +10,6 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "shell",
@@ -28,8 +27,8 @@
         "center": true,
         "visible": false,
         "skipTaskbar": true,
-        "focus": true,
-        "noRedirectionBitmap": true
+        "focus": true
+        
       },
       {
         "label": "settings",
@@ -46,8 +45,8 @@
         "shadow": false,
         "center": true,
         "visible": false,
-        "skipTaskbar": false,
-        "noRedirectionBitmap": true
+        "skipTaskbar": false
+        
       },
       {
         "label": "ocr-region",
@@ -59,8 +58,8 @@
         "shadow": false,
         "visible": false,
         "resizable": false,
-        "skipTaskbar": true,
-        "noRedirectionBitmap": true
+        "skipTaskbar": true
+        
       }
     ],
     "security": {

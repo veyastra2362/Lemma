@@ -29,6 +29,15 @@ function Get-RelativePath([string] $full) {
     $full.Replace($repoRoot + [System.IO.Path]::DirectorySeparatorChar, '').Replace('\', '/')
 }
 
+# 只检查真正的代码：注释里出现 cfg(target_os) 是在讲规矩，不算违规。
+function Test-IsCodeLine([string] $line) {
+    $trimmed = $line.Trim()
+    if ($trimmed.StartsWith('//')) { return $false }
+    if ($trimmed.StartsWith('*')) { return $false }
+    if ($trimmed.StartsWith('/*')) { return $false }
+    return $true
+}
+
 $rustFiles = Get-ChildItem -Path $srcRoot -Recurse -File -Filter *.rs
 
 # ---- 1. core/ 不得出现 cfg(target_os) ----
@@ -36,6 +45,7 @@ $coreFiles = $rustFiles | Where-Object { $_.FullName -match [regex]::Escape("src
 foreach ($file in $coreFiles) {
     $hits = Select-String -Path $file.FullName -Pattern 'cfg\(\s*(target_os|windows|unix)' -AllMatches
     foreach ($hit in $hits) {
+        if (-not (Test-IsCodeLine $hit.Line)) { continue }
         $failures.Add("$(Get-RelativePath $file.FullName):$($hit.LineNumber) core/ 里出现了平台条件编译：" + $hit.Line.Trim())
     }
 }
@@ -45,6 +55,7 @@ $forbidden = '^\s*use\s+(windows|winapi|objc2?|cocoa|core_graphics|gtk|gdk|atspi
 foreach ($file in $coreFiles) {
     $hits = Select-String -Path $file.FullName -Pattern $forbidden
     foreach ($hit in $hits) {
+        if (-not (Test-IsCodeLine $hit.Line)) { continue }
         $failures.Add("$(Get-RelativePath $file.FullName):$($hit.LineNumber) core/ 直接依赖了平台 crate：" + $hit.Line.Trim())
     }
 }
@@ -57,6 +68,7 @@ foreach ($file in $rustFiles) {
 
     $hits = Select-String -Path $file.FullName -Pattern 'cfg\(\s*target_os' -AllMatches
     foreach ($hit in $hits) {
+        if (-not (Test-IsCodeLine $hit.Line)) { continue }
         $failures.Add("${relative}:$($hit.LineNumber) cfg(target_os) 只能出现在 platform/ 下：" + $hit.Line.Trim())
     }
 }

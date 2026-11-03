@@ -15,6 +15,9 @@ crate-type = ["rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# 注意：参考实现用了 tauri 2.12 才有的窗口字段 noRedirectionBitmap，
+# 但 crates.io 上 tauri 最新稳定是 2.11.6 / tauri-build 2.6.3。
+# 等上游发布 2.12 后再把该字段加回 tauri.conf.json（见 docs/REFERENCE-NOTES.md）。
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"

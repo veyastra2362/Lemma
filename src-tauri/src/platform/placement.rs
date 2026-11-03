@@ -43,7 +43,11 @@ fn saturating_i32(value: i64) -> i32 {
 }
 
 fn clamp(value: i32, min: i32, max: i32) -> i32 {
-    if max < min { min } else { value.clamp(min, max) }
+    if max < min {
+        min
+    } else {
+        value.clamp(min, max)
+    }
 }
 
 /// 计算 HUD 落在哪里。返回的矩形保证完全位于 `work_area` 之内。
@@ -137,13 +141,15 @@ mod tests {
                 height: 1080,
             },
         );
+        // 光标在副屏左上角内侧：坐标是负数，但不应被误钳到 0
         let rect = place_near_cursor(Point { x: -1915, y: -195 }, size(), secondary, 14);
         assert_eq!(rect.origin, Point { x: -1901, y: -181 });
 
-        // 顶到负坐标屏的左上角时不能跑出工作区
-        let rect = place_near_cursor(Point { x: -1919, y: -199 }, size(), secondary, -40);
-        assert_eq!(rect.origin.x, secondary.origin.x);
-        assert_eq!(rect.origin.y, secondary.origin.y);
+        // 光标贴近副屏右下角：翻到左上侧，且必须仍落在这块工作区里
+        let rect = place_near_cursor(Point { x: -1919, y: 875 }, size(), secondary, 14);
+        assert_eq!(rect.origin, Point { x: -1905, y: 561 });
+        assert!(rect.right() <= secondary.right());
+        assert!(rect.bottom() <= secondary.bottom());
     }
 
     #[test]
@@ -156,7 +162,13 @@ mod tests {
             },
         );
         let rect = place_near_cursor(Point { x: 150, y: 100 }, size(), tiny, 14);
-        assert_eq!(rect.size, Size { width: 300, height: 200 });
+        assert_eq!(
+            rect.size,
+            Size {
+                width: 300,
+                height: 200
+            }
+        );
         assert_eq!(rect.origin, Point { x: 0, y: 0 });
     }
 
