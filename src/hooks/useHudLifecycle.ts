@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { ipc, isTauri, onFirstPaint, onHudPresented } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
+import { useDeckStore } from "../store/useDeckStore";
 
 /**
  * 窗口刚显示时焦点事件会有一次抖动，这段时间内的失焦不算用户离开。
@@ -25,9 +26,14 @@ export function useHudLifecycle(): void {
         return;
       }
       event.preventDefault();
-      if (isTauri()) {
-        void ipc.hudHide();
+      if (!isTauri()) {
+        return;
       }
+      // 先退一层 Deck；已经到底层才关窗口。
+      if (useDeckStore.getState().pop()) {
+        return;
+      }
+      void ipc.hudHide();
     };
     window.addEventListener("keydown", onKeyDown);
 
@@ -56,8 +62,13 @@ export function useHudLifecycle(): void {
       void ipc
         .lastCapture()
         .then((capture) => {
-          if (!disposed) {
-            setCapture(capture);
+          if (disposed) {
+            return;
+          }
+          setCapture(capture);
+          // 每次呼出都用新的取词结果重置整个卡片栈。
+          if (capture) {
+            useDeckStore.getState().reset(capture);
           }
         })
         .catch(() => undefined);

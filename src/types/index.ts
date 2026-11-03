@@ -15,10 +15,26 @@ export interface PaintSample {
 /** 呼出方式，与 Rust 侧 `core::settings::Trigger` 一一对应。 */
 export type Trigger = "doubleControl" | "hotkey";
 
+/** 取词模式，与 Rust 侧 `core::settings::CaptureMode` 一一对应。 */
+export type CaptureMode = "auto" | "selectionOnly" | "hoverOnly";
+
+/** 卡片上显示哪些区块。 */
+export interface CardSections {
+  phonetic: boolean;
+  translation: boolean;
+  definition: boolean;
+  tags: boolean;
+  exchange: boolean;
+}
+
 export interface Settings {
   trigger: Trigger;
   /** 形如 `Alt+Q`，仅在 trigger === "hotkey" 时生效。 */
   hotkey: string;
+  captureMode: CaptureMode;
+  /** HUD 自适应的最大高度（逻辑像素）。 */
+  hudMaxHeight: number;
+  cardSections: CardSections;
 }
 
 /** 取词命中的档位，与 Rust 侧 `core::selection::Tier` 对应。 */

@@ -30,6 +30,8 @@ pub fn run() {
             commands::last_capture,
             commands::get_settings,
             commands::update_settings,
+            commands::lookup_word,
+            commands::resize_hud,
             commands::report_first_paint,
         ])
         .setup(|app| {

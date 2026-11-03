@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use crate::core::dict::{self, Entry};
+use crate::core::settings::CaptureMode;
 use crate::core::text::sentence_containing;
 use crate::platform::{self, clipboard, uia::UiaOutcome};
 
@@ -60,7 +61,7 @@ pub struct Capture {
 /// 从 UIA 结果里挑文本：选区优先，其次光标词。空白一律视为没有。
 ///
 /// 纯函数——这是整个取词链路里最该被单测覆盖的部分。
-pub fn pick_uia(outcome: &UiaOutcome) -> Option<(Tier, String)> {
+pub fn pick_uia(outcome: &UiaOutcome, mode: CaptureMode) -> Option<(Tier, String)> {
     fn clean(value: &Option<String>) -> Option<String> {
         value
             .as_deref()
@@ -69,13 +70,16 @@ pub fn pick_uia(outcome: &UiaOutcome) -> Option<(Tier, String)> {
             .map(str::to_string)
     }
 
-    if let Some(text) = clean(&outcome.selection) {
-        return Some((Tier::Selection, text));
+    let selection = clean(&outcome.selection).map(|text| (Tier::Selection, text));
+    let word = clean(&outcome.word).map(|text| (Tier::Word, text));
+
+    match mode {
+        // 只认选区：浏览器推荐这一档——实测 Chrome 选区 8ms 且稳定，悬停取词不稳定。
+        CaptureMode::SelectionOnly => selection,
+        // 只认光标词：原生应用里"悬停即查"。
+        CaptureMode::HoverOnly => word,
+        CaptureMode::Auto => selection.or(word),
     }
-    if let Some(text) = clean(&outcome.word) {
-        return Some((Tier::Word, text));
-    }
-    None
 }
 
 static LAST: OnceLock<Mutex<Option<Capture>>> = OnceLock::new();
@@ -110,11 +114,11 @@ fn store(capture: &Capture) {
 }
 
 /// 取词：UIA 优先，拿不到再走剪贴板兜底。
-pub fn capture() -> Capture {
+pub fn capture(mode: CaptureMode) -> Capture {
     let started = Instant::now();
     let uia = platform::uia_capture();
 
-    if let Some((tier, text)) = pick_uia(&uia) {
+    if let Some((tier, text)) = pick_uia(&uia, mode) {
         let entry = dict::lookup_global(&text);
         let result = Capture {
             sentence: sentence_containing(&uia.paragraph, &text),
@@ -188,28 +192,56 @@ mod tests {
 
     #[test]
     fn prefers_the_selection_over_the_word() {
-        let picked = pick_uia(&outcome(Some("selected text"), Some("word"))).unwrap();
+        let picked = pick_uia(
+            &outcome(Some("selected text"), Some("word")),
+            CaptureMode::Auto,
+        )
+        .unwrap();
         assert_eq!(picked.0, Tier::Selection);
         assert_eq!(picked.1, "selected text");
     }
 
     #[test]
     fn falls_back_to_the_word_when_the_selection_is_empty() {
-        let picked = pick_uia(&outcome(Some("   "), Some("threshold"))).unwrap();
+        let picked = pick_uia(&outcome(Some("   "), Some("threshold")), CaptureMode::Auto).unwrap();
         assert_eq!(picked.0, Tier::Word);
         assert_eq!(picked.1, "threshold");
     }
 
     #[test]
     fn nothing_available_yields_none() {
-        assert!(pick_uia(&outcome(None, None)).is_none());
-        assert!(pick_uia(&outcome(Some(""), Some("  \t\n"))).is_none());
+        assert!(pick_uia(&outcome(None, None), CaptureMode::Auto).is_none());
+        assert!(pick_uia(&outcome(Some(""), Some("  \t\n")), CaptureMode::Auto).is_none());
     }
 
     #[test]
     fn text_is_trimmed() {
-        let picked = pick_uia(&outcome(Some("  padded  "), None)).unwrap();
+        let picked = pick_uia(&outcome(Some("  padded  "), None), CaptureMode::Auto).unwrap();
         assert_eq!(picked.1, "padded");
+    }
+
+    #[test]
+    fn selection_only_mode_ignores_the_cursor_word() {
+        let picked = pick_uia(&outcome(None, Some("hovered")), CaptureMode::SelectionOnly);
+        assert!(picked.is_none(), "只认选区时不应回退到光标词");
+    }
+
+    #[test]
+    fn hover_only_mode_ignores_the_selection() {
+        let picked = pick_uia(
+            &outcome(Some("selected text"), Some("hovered")),
+            CaptureMode::HoverOnly,
+        );
+        assert_eq!(picked.unwrap().0, Tier::Word);
+    }
+
+    #[test]
+    fn auto_mode_prefers_the_selection() {
+        let picked = pick_uia(
+            &outcome(Some("selected text"), Some("hovered")),
+            CaptureMode::Auto,
+        );
+        assert_eq!(picked.unwrap().0, Tier::Selection);
     }
 
     #[test]

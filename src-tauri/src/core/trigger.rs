@@ -32,13 +32,14 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         if !fired {
             return;
         }
-        if handle.state::<SettingsStore>().get().trigger != Trigger::DoubleControl {
+        let settings = handle.state::<SettingsStore>().get();
+        if settings.trigger != Trigger::DoubleControl {
             return;
         }
 
         logs::line("trigger double-tap fits");
         // 取词会阻塞几十毫秒，放在这个观察线程上做，别阻塞主线程。
-        selection::capture();
+        selection::capture(settings.capture_mode);
         shell::toggle_on_main(&handle);
     })?;
     logs::line("keyboard watch installed");
@@ -65,7 +66,8 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     manager
         .on_shortcut(shortcut, |app, _shortcut, event| {
             if event.state == ShortcutState::Pressed {
-                selection::capture();
+                let mode = app.state::<SettingsStore>().get().capture_mode;
+                selection::capture(mode);
                 shell::toggle_on_main(app);
             }
         })

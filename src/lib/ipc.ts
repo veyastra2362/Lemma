@@ -3,10 +3,10 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
   Capture,
+  Entry,
   PaintSample,
   RuntimeStats,
   Settings,
-  Trigger,
 } from "../types";
 
 /** 是否跑在 Tauri 宿主里（`pnpm dev` 直接开浏览器时为 false）。 */
@@ -58,9 +58,12 @@ export const ipc = {
     withRetry("last_capture", () => invoke<Capture | null>("last_capture")),
   getSettings: () =>
     withRetry("get_settings", () => invoke<Settings>("get_settings")),
-  /** 应用失败（如热键被占用）会 reject，Rust 侧已回滚到旧配置。 */
-  updateSettings: (next: { trigger: Trigger; hotkey: string }) =>
-    invoke<Settings>("update_settings", next),
+  /** 传完整设置对象。应用失败（如热键被占用）会 reject，Rust 侧已回滚到旧配置。 */
+  updateSettings: (next: Settings) => invoke<Settings>("update_settings", { next }),
+  /** 按内容高度调整 HUD（逻辑像素），Rust 侧会钳到设置里的上限。 */
+  resizeHud: (height: number) => invoke<void>("resize_hud", { height }),
+  /** Deck 下探查词。未收录返回 null。 */
+  lookupWord: (word: string) => invoke<Entry | null>("lookup_word", { word }),
   reportFirstPaint: (seq: number) => invoke<void>("report_first_paint", { seq }),
 };
 
@@ -70,6 +73,15 @@ export function onHudPresented(
 ): Promise<UnlistenFn> {
   return withRetry("listen(hud://presented)", () =>
     listen<number>("hud://presented", (event) => handler(event.payload)),
+  );
+}
+
+/** 监听设置变更（设置窗口改了设置后，HUD 靠这个同步）。 */
+export function onSettingsChanged(
+  handler: (settings: Settings) => void,
+): Promise<UnlistenFn> {
+  return withRetry("listen(settings://changed)", () =>
+    listen<Settings>("settings://changed", (event) => handler(event.payload)),
   );
 }
 

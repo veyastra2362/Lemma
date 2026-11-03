@@ -27,6 +27,17 @@ const zhCN = {
   settingsHotkeyRecord: "点击录制",
   settingsHotkeyRule: "至少包含 Ctrl / Alt 之一",
   settingsHotkeySaveFailed: "保存失败",
+  cardNotInDict: "词库未收录",
+  settingsSectionCapture: "取词模式",
+  settingsCaptureAuto: "自动（选区优先，其次光标词）",
+  settingsCaptureAutoHint: "推荐。有选区就读选区，没有就取光标下的词。",
+  settingsCaptureSelection: "只用选区",
+  settingsCaptureSelectionHint:
+    "浏览器推荐：实测选区 8ms 且稳定，悬停取词在 Chrome 上不稳定。",
+  settingsCaptureHover: "只用光标词",
+  settingsCaptureHoverHint: "原生应用里悬停即查；浏览器上不可靠。",
+  settingsSectionCard: "卡片显示内容",
+  settingsSectionSize: "HUD 最大高度",
   settingsSectionPerf: "性能基线",
   settingsStartup: "冷启动到托盘就绪",
   settingsPresents: "累计呼出次数",
@@ -36,6 +47,11 @@ const zhCN = {
 } as const;
 
 export type MessageKey = keyof typeof zhCN;
+
+/** 深度下探时被折叠的层数提示（带参数，所以不放进字典键里）。 */
+export function tDeckCollapsed(count: number): string {
+  return `上面还有 ${count} 层`;
+}
 
 export function t(key: MessageKey): string {
   return zhCN[key];

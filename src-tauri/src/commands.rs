@@ -58,14 +58,11 @@ pub fn get_settings(store: State<'_, SettingsStore>) -> Settings {
 pub fn update_settings(
     app: AppHandle,
     store: State<'_, SettingsStore>,
-    trigger: crate::core::settings::Trigger,
-    hotkey: String,
+    next: Settings,
 ) -> Result<Settings, String> {
     let previous = store.get();
-    let next = Settings {
-        trigger,
-        hotkey: hotkey.trim().to_string(),
-    };
+    let mut next = next;
+    next.hotkey = next.hotkey.trim().to_string();
 
     let saved = store.set(next)?;
     if let Err(error) = crate::core::trigger::apply(&app) {
@@ -74,11 +71,27 @@ pub fn update_settings(
         return Err(error);
     }
 
+    // 设置窗口与 HUD 是两个独立 webview，各自有独立的前端状态。
+    // 改完必须广播一次，否则 HUD 还按旧设置渲染。
+    let _ = app.emit("settings://changed", saved.clone());
+
     crate::core::logs::line(format!(
-        "settings updated trigger={:?} hotkey={}",
-        saved.trigger, saved.hotkey
+        "settings updated trigger={:?} mode={:?} maxH={} hotkey={}",
+        saved.trigger, saved.capture_mode, saved.hud_max_height, saved.hotkey
     ));
     Ok(saved)
+}
+
+/// 查一个词（Deck 下探用）。未收录返回 null，不是错误。
+#[tauri::command]
+pub fn lookup_word(word: String) -> Option<crate::core::dict::Entry> {
+    crate::core::dict::lookup_global(&word)
+}
+
+/// 按内容高度调整 HUD（前端量出来之后调用）。
+#[tauri::command]
+pub fn resize_hud(app: AppHandle, height: f64) -> Result<(), String> {
+    crate::core::shell::resize_hud(&app, height)
 }
 
 /// 前端在 `requestAnimationFrame` 里回报「首帧已绘制」。

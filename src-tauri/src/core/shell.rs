@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Runtime, WebviewWindo
 
 use crate::core::logs;
 use crate::core::perf::Perf;
+use crate::core::settings::{HUD_MIN_HEIGHT, HUD_WIDTH};
 use crate::platform::{self, PlatformWindow, placement, window::WindowOps};
 
 pub const HUD_LABEL: &str = "shell";
@@ -117,6 +118,29 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>) {
     } else {
         present(app);
     }
+}
+
+/// 按内容高度调整 HUD（逻辑像素），并重新定位避免越界。
+///
+/// 高度由前端量出来（`ResizeObserver`），这里只做钳制与窗口操作——
+/// 前端不该直接决定物理像素，那是 DPI 相关的事。
+pub fn resize_hud<R: Runtime>(app: &AppHandle<R>, height: f64) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(HUD_LABEL) else {
+        return Err("HUD 窗口不存在".to_string());
+    };
+    let max = app
+        .state::<crate::core::settings::SettingsStore>()
+        .get()
+        .clamped_max_height();
+    let height = height.clamp(HUD_MIN_HEIGHT, max);
+
+    window
+        .set_size(tauri::Size::Logical(tauri::LogicalSize::new(
+            HUD_WIDTH, height,
+        )))
+        .map_err(|e| format!("调整 HUD 尺寸失败：{e}"))?;
+    reposition(&window);
+    Ok(())
 }
 
 /// 从任意线程安全地切换 HUD。

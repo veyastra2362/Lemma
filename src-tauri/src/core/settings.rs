@@ -1,7 +1,10 @@
-//! 用户设置：触发方式与热键。落盘到 `<app_data>/settings.json`。
+//! 用户设置：触发方式、取词模式、卡片展示、HUD 尺寸。落盘到 `<app_data>/settings.json`。
 //!
-//! 故意不用 tauri-plugin-store：这里只有两个字段，手写 JSON 更小更可控，
+//! 故意不用 tauri-plugin-store：字段少，手写 JSON 更小更可控，
 //! 而且序列化错误可以给出可读的报错。
+//!
+//! **新增字段一律加 `#[serde(default)]`**，否则老的 settings.json 会导致整体反序列化失败、
+//! 用户设置被静默重置。
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -18,9 +21,53 @@ pub enum Trigger {
     Hotkey,
 }
 
+/// 取词模式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CaptureMode {
+    /// 有选区就读选区，没有就取光标下的词（默认）。
+    Auto,
+    /// 只读选区。浏览器场景推荐——实测 Chrome 选区 8ms 且稳定，悬停取词不稳定。
+    SelectionOnly,
+    /// 只取光标下的词。适合原生应用里"悬停即查"。
+    HoverOnly,
+}
+
+/// 卡片上显示哪些区块。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardSections {
+    pub phonetic: bool,
+    pub translation: bool,
+    pub definition: bool,
+    pub tags: bool,
+    pub exchange: bool,
+}
+
+impl Default for CardSections {
+    fn default() -> Self {
+        // 默认只放"读一眼就够"的信息：音标 + 中文释义 + 考试标签。
+        // 英文释义和词形变化收起来——深度阅读时信息过载比信息不足更烦。
+        Self {
+            phonetic: true,
+            translation: true,
+            definition: false,
+            tags: true,
+            exchange: false,
+        }
+    }
+}
+
 /// 默认热键。注意 `RegisterHotKey` 是独占的，这个键很可能已被别的软件占用，
 /// 所以真正的默认触发是双击 Ctrl。
 pub const DEFAULT_HOTKEY: &str = "Alt+Q";
+
+/// HUD 逻辑宽度（固定），自适应只改高度。
+pub const HUD_WIDTH: f64 = 420.0;
+/// HUD 最小高度。
+pub const HUD_MIN_HEIGHT: f64 = 132.0;
+/// HUD 最大高度的上限（用户可在这个范围内调）。
+pub const HUD_MAX_HEIGHT_LIMIT: f64 = 720.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +75,21 @@ pub struct Settings {
     pub trigger: Trigger,
     /// 形如 `Alt+Q` / `Ctrl+Shift+D`，仅在 `trigger == Hotkey` 时生效。
     pub hotkey: String,
+    #[serde(default = "default_capture_mode")]
+    pub capture_mode: CaptureMode,
+    /// HUD 自适应的最大高度（逻辑像素）。
+    #[serde(default = "default_hud_max_height")]
+    pub hud_max_height: u32,
+    #[serde(default)]
+    pub card_sections: CardSections,
+}
+
+fn default_capture_mode() -> CaptureMode {
+    CaptureMode::Auto
+}
+
+fn default_hud_max_height() -> u32 {
+    480
 }
 
 impl Default for Settings {
@@ -35,7 +97,17 @@ impl Default for Settings {
         Self {
             trigger: Trigger::DoubleControl,
             hotkey: DEFAULT_HOTKEY.to_string(),
+            capture_mode: default_capture_mode(),
+            hud_max_height: default_hud_max_height(),
+            card_sections: CardSections::default(),
         }
+    }
+}
+
+impl Settings {
+    /// 把用户填的最大高度钳进合法范围。
+    pub fn clamped_max_height(&self) -> f64 {
+        (self.hud_max_height as f64).clamp(HUD_MIN_HEIGHT, HUD_MAX_HEIGHT_LIMIT)
     }
 }
 
@@ -103,10 +175,16 @@ mod tests {
     }
 
     #[test]
-    fn defaults_to_double_control() {
+    fn defaults_are_sane() {
         let settings = Settings::default();
         assert_eq!(settings.trigger, Trigger::DoubleControl);
         assert_eq!(settings.hotkey, DEFAULT_HOTKEY);
+        assert_eq!(settings.capture_mode, CaptureMode::Auto);
+        assert_eq!(settings.hud_max_height, 480);
+        assert!(settings.card_sections.translation);
+        // 默认收起英文释义与词形变化
+        assert!(!settings.card_sections.definition);
+        assert!(!settings.card_sections.exchange);
     }
 
     #[test]
@@ -115,17 +193,42 @@ mod tests {
         let store = SettingsStore::load(&dir);
         assert_eq!(store.get().trigger, Trigger::DoubleControl);
 
-        store
-            .set(Settings {
-                trigger: Trigger::Hotkey,
-                hotkey: "Ctrl+Shift+D".to_string(),
-            })
-            .expect("写入应成功");
+        let mut next = store.get();
+        next.trigger = Trigger::Hotkey;
+        next.hotkey = "Ctrl+Shift+D".to_string();
+        next.capture_mode = CaptureMode::SelectionOnly;
+        next.hud_max_height = 600;
+        next.card_sections.definition = true;
+        store.set(next).expect("写入应成功");
 
         let reloaded = SettingsStore::load(&dir);
         let settings = reloaded.get();
         assert_eq!(settings.trigger, Trigger::Hotkey);
         assert_eq!(settings.hotkey, "Ctrl+Shift+D");
+        assert_eq!(settings.capture_mode, CaptureMode::SelectionOnly);
+        assert_eq!(settings.hud_max_height, 600);
+        assert!(settings.card_sections.definition);
+    }
+
+    /// 老版本的 settings.json 只有 trigger + hotkey，新字段必须能补上默认值，
+    /// 而不是整个文件反序列化失败、把用户设置清空。
+    #[test]
+    fn old_settings_files_gain_new_defaults() {
+        let dir = temp_dir("legacy");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("settings.json"),
+            r#"{ "trigger": "hotkey", "hotkey": "Alt+X" }"#,
+        )
+        .unwrap();
+
+        let store = SettingsStore::load(&dir);
+        let settings = store.get();
+        assert_eq!(settings.trigger, Trigger::Hotkey);
+        assert_eq!(settings.hotkey, "Alt+X");
+        assert_eq!(settings.capture_mode, CaptureMode::Auto);
+        assert_eq!(settings.hud_max_height, 480);
+        assert!(settings.card_sections.translation);
     }
 
     #[test]
@@ -136,5 +239,14 @@ mod tests {
 
         let store = SettingsStore::load(&dir);
         assert_eq!(store.get().trigger, Trigger::DoubleControl);
+    }
+
+    #[test]
+    fn max_height_is_clamped() {
+        let mut settings = Settings::default();
+        settings.hud_max_height = 5;
+        assert_eq!(settings.clamped_max_height(), HUD_MIN_HEIGHT);
+        settings.hud_max_height = 99_999;
+        assert_eq!(settings.clamped_max_height(), HUD_MAX_HEIGHT_LIMIT);
     }
 }

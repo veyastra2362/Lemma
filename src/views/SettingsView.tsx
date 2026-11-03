@@ -4,18 +4,40 @@ import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t } from "../i18n";
 import { ipc, isTauri } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
-import type { Trigger } from "../types";
+import type { CaptureMode, CardSections, Settings } from "../types";
 import { formatHotkey } from "../utils/hotkey";
 
 const ROADMAP = [
   { id: "M0", label: "骨架 · 单例 · 触发 · 性能基线", done: true },
-  { id: "M1", label: "UIA 三档取词 + 上下文", done: false },
-  { id: "M2", label: "redb 百万词库 + Deck 下探", done: false },
+  { id: "M1", label: "三档取词 + 上下文", done: true },
+  { id: "M2", label: "redb 词库 + 卡片栈下探", done: true },
   { id: "M3", label: "翻译分层路由 + 双栏", done: false },
   { id: "M4", label: "PP-OCRv5 端侧 OCR", done: false },
   { id: "M5", label: "Kokoro 流式朗读", done: false },
   { id: "M6", label: "标注层 / 原地回填", done: false },
 ] as const;
+
+const CAPTURE_OPTIONS: { value: CaptureMode; label: string; hint: string }[] = [
+  { value: "auto", label: t("settingsCaptureAuto"), hint: t("settingsCaptureAutoHint") },
+  {
+    value: "selectionOnly",
+    label: t("settingsCaptureSelection"),
+    hint: t("settingsCaptureSelectionHint"),
+  },
+  {
+    value: "hoverOnly",
+    label: t("settingsCaptureHover"),
+    hint: t("settingsCaptureHoverHint"),
+  },
+];
+
+const SECTION_OPTIONS: { key: keyof CardSections; label: string }[] = [
+  { key: "phonetic", label: "音标" },
+  { key: "translation", label: "中文释义" },
+  { key: "definition", label: "英文释义" },
+  { key: "tags", label: "考试标签" },
+  { key: "exchange", label: "词形变化" },
+];
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -23,6 +45,45 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-[11px] text-[var(--hud-muted)]">{label}</div>
       <div className="mt-0.5 font-mono text-[15px]">{value}</div>
     </div>
+  );
+}
+
+function Radio({
+  active,
+  label,
+  hint,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  hint?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
+        active
+          ? "border-[var(--hud-accent)] bg-white/5"
+          : "border-white/10 hover:border-white/25"
+      }`}
+    >
+      <span
+        className="mt-1 size-2 shrink-0 rounded-full"
+        style={{
+          background: active ? "var(--hud-accent)" : "oklch(1 0 0 / 20%)",
+        }}
+      />
+      <span className="min-w-0">
+        <span className="block text-[13px]">{label}</span>
+        {hint && (
+          <span className="mt-0.5 block text-[11px] leading-snug text-[var(--hud-muted)]">
+            {hint}
+          </span>
+        )}
+      </span>
+    </button>
   );
 }
 
@@ -44,17 +105,25 @@ export function SettingsView() {
     void ipc.perfStats().then(setStats).catch(() => undefined);
   }, [setStats]);
 
+  /** 改一项、其余保持不变。失败时 Rust 已回滚，这里只负责显示原因。 */
   const apply = useCallback(
-    (trigger: Trigger, hotkey: string) => {
+    (patch: Partial<Settings>) => {
+      if (!settings) {
+        return;
+      }
       setError(null);
+      const next: Settings = { ...settings, ...patch };
+      // 乐观更新：界面立刻反映，等待 Rust 的结果再校正。
+      setSettings(next);
       void ipc
-        .updateSettings({ trigger, hotkey })
+        .updateSettings(next)
         .then(setSettings)
         .catch((reason: unknown) => {
           setError(reason instanceof Error ? reason.message : String(reason));
+          void ipc.getSettings().then(setSettings).catch(() => undefined);
         });
     },
-    [setSettings],
+    [settings, setSettings],
   );
 
   // 录制期间用捕获阶段拦下按键，避免组合键被页面的其它处理器吃掉。
@@ -75,7 +144,7 @@ export function SettingsView() {
         return;
       }
       setRecording(false);
-      apply("hotkey", combo);
+      apply({ trigger: "hotkey", hotkey: combo });
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
@@ -91,6 +160,7 @@ export function SettingsView() {
         : t("noData");
 
   const isDoubleControl = settings?.trigger === "doubleControl";
+  const sections = settings?.cardSections;
 
   return (
     <div
@@ -107,39 +177,18 @@ export function SettingsView() {
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {/* ---- 呼出方式 ---- */}
         <section>
           <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
             {t("settingsSectionTrigger")}
           </h2>
-
           <div className="space-y-1.5">
-            <button
-              type="button"
-              onClick={() => apply("doubleControl", settings?.hotkey ?? "Alt+Q")}
-              className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
-                isDoubleControl
-                  ? "border-[var(--hud-accent)] bg-white/5"
-                  : "border-white/10 hover:border-white/25"
-              }`}
-            >
-              <span
-                className="mt-1 size-2 shrink-0 rounded-full"
-                style={{
-                  background: isDoubleControl
-                    ? "var(--hud-accent)"
-                    : "oklch(1 0 0 / 20%)",
-                }}
-              />
-              <span>
-                <span className="block text-[13px]">
-                  {t("settingsTriggerDoubleControl")}
-                </span>
-                <span className="mt-0.5 block text-[11px] text-[var(--hud-muted)]">
-                  {t("settingsTriggerDoubleControlHint")}
-                </span>
-              </span>
-            </button>
-
+            <Radio
+              active={isDoubleControl}
+              label={t("settingsTriggerDoubleControl")}
+              hint={t("settingsTriggerDoubleControlHint")}
+              onClick={() => apply({ trigger: "doubleControl" })}
+            />
             <div
               className={`rounded-lg border px-3 py-2 ${
                 !isDoubleControl
@@ -168,14 +217,85 @@ export function SettingsView() {
               </div>
             </div>
           </div>
-
-          {error && (
-            <p className="mt-2 rounded-md border border-red-400/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-300">
-              {t("settingsHotkeySaveFailed")}：{error}
-            </p>
-          )}
         </section>
 
+        {/* ---- 取词模式 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionCapture")}
+          </h2>
+          <div className="space-y-1.5">
+            {CAPTURE_OPTIONS.map((option) => (
+              <Radio
+                key={option.value}
+                active={settings?.captureMode === option.value}
+                label={option.label}
+                hint={option.hint}
+                onClick={() => apply({ captureMode: option.value })}
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* ---- 卡片内容 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionCard")}
+          </h2>
+          <div className="flex flex-wrap gap-1.5">
+            {SECTION_OPTIONS.map((option) => {
+              const active = sections?.[option.key] ?? false;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() =>
+                    sections &&
+                    apply({
+                      cardSections: { ...sections, [option.key]: !active },
+                    })
+                  }
+                  className={`rounded-md border px-2 py-1 text-[12px] transition ${
+                    active
+                      ? "border-[var(--hud-accent)] text-[var(--hud-accent)]"
+                      : "border-white/12 text-[var(--hud-muted)] hover:border-white/30"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ---- HUD 最大高度 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 flex items-center gap-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionSize")}
+            <span className="ml-auto font-mono text-[12px] text-[var(--hud-accent)]">
+              {settings?.hudMaxHeight ?? 480} px
+            </span>
+          </h2>
+          <input
+            type="range"
+            min={160}
+            max={720}
+            step={20}
+            value={settings?.hudMaxHeight ?? 480}
+            onChange={(event) =>
+              apply({ hudMaxHeight: Number(event.target.value) })
+            }
+            className="w-full accent-[var(--hud-accent)]"
+          />
+        </section>
+
+        {error && (
+          <p className="mt-2 rounded-md border border-red-400/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-300">
+            {t("settingsHotkeySaveFailed")}：{error}
+          </p>
+        )}
+
+        {/* ---- 性能 ---- */}
         <section className="mt-5">
           <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
             {t("settingsSectionPerf")}
@@ -187,7 +307,8 @@ export function SettingsView() {
           </div>
         </section>
 
-        <section className="mt-5">
+        {/* ---- 里程碑 ---- */}
+        <section className="mt-5 pb-2">
           <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
             {t("settingsSectionRoadmap")}
           </h2>
@@ -213,9 +334,7 @@ export function SettingsView() {
                   {item.label}
                 </span>
                 {item.done && (
-                  <span className="ml-auto text-[11px] text-[var(--hud-accent)]">
-                    完成
-                  </span>
+                  <span className="ml-auto text-[11px] text-[var(--hud-accent)]">完成</span>
                 )}
               </li>
             ))}
