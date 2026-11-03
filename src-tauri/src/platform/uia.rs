@@ -1,0 +1,62 @@
+//! UI Automation 取词契约。
+//!
+//! 三档降级，档位越靠前代价越小、副作用越少：
+//!
+//! | 档 | 机制 | 副作用 |
+//! | --- | --- | --- |
+//! | T1 选区 | `TextPattern.GetSelection()` | 无 |
+//! | T0 光标词 | `TextPattern.RangeFromPoint()` + 扩到 `WordUnit` | 无 |
+//! | T2 剪贴板 | 模拟 Ctrl+C 读回（M1b 实现） | 污染剪贴板、慢 |
+//!
+//! 这里只定义「探测」用到的类型；真正取词用 [`Selection`]。
+
+use serde::{Deserialize, Serialize};
+
+/// 一段文本及其上下文。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Selection {
+    /// 命中的词 / 选区原文。
+    pub text: String,
+    /// 所在段落。
+    pub paragraph: String,
+}
+
+/// 命中的控件信息，用于诊断与支持矩阵。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ElementInfo {
+    pub name: String,
+    pub class_name: String,
+    pub control_type: String,
+    pub automation_id: String,
+    pub process_id: u32,
+    pub process_name: String,
+    /// 控件矩形（物理像素）。取不到时为 None。
+    pub bounds: Option<[i32; 4]>,
+}
+
+/// 单档探测结果。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TierProbe {
+    /// `T1-selection` / `T0-word`
+    pub tier: String,
+    pub hit: bool,
+    pub chars: usize,
+    pub elapsed_ms: f64,
+    /// 命中原文（截断到 120 字符）或未命中的原因。
+    pub detail: String,
+}
+
+/// 一次完整探测的报告。既是诊断数据，也是 M1 的支持矩阵证据。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProbeReport {
+    pub cursor: [i32; 2],
+    /// 光标所在的控件。
+    pub element: Option<ElementInfo>,
+    /// 这个控件实际支持哪些 UIA Pattern。降级策略怎么选全看这一行。
+    pub patterns: Vec<String>,
+    pub tiers: Vec<TierProbe>,
+    /// 上下文捕获结果（句子 / 段落）。
+    pub context: Option<Selection>,
+    /// 整体失败原因（拿不到 UIA 客户端等）。
+    pub error: Option<String>,
+}

@@ -5,6 +5,7 @@
 
 pub mod keyboard;
 pub mod placement;
+pub mod uia;
 pub mod window;
 
 #[cfg(target_os = "windows")]
@@ -35,4 +36,9 @@ pub fn watch_keyboard(
     callback: impl Fn(keyboard::KeySignal) + Send + 'static,
 ) -> Result<(), String> {
     backend::watch_keyboard(callback)
+}
+
+/// 探测某个屏幕点（默认光标位置）的取词能力，用于建立支持矩阵。
+pub fn uia_probe(point: Option<(i32, i32)>) -> uia::ProbeReport {
+    backend::uia_probe(point)
 }

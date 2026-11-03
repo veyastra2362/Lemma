@@ -17,3 +17,6 @@ pub(crate) fn work_area_at(_point: Point) -> Option<Rect> {
 
 mod keyboard;
 pub(crate) use keyboard::watch as watch_keyboard;
+
+mod uia;
+pub(crate) use uia::probe as uia_probe;

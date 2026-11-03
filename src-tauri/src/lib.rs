@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod core;
 pub mod platform;
+pub mod probe;
 
 use tauri::Manager;
 

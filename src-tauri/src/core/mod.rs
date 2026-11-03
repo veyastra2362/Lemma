@@ -5,5 +5,6 @@ pub mod logs;
 pub mod perf;
 pub mod settings;
 pub mod shell;
+pub mod text;
 pub mod tray;
 pub mod trigger;
