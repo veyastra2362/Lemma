@@ -243,10 +243,16 @@ mod tests {
 
     #[test]
     fn max_height_is_clamped() {
-        let mut settings = Settings::default();
-        settings.hud_max_height = 5;
-        assert_eq!(settings.clamped_max_height(), HUD_MIN_HEIGHT);
-        settings.hud_max_height = 99_999;
-        assert_eq!(settings.clamped_max_height(), HUD_MAX_HEIGHT_LIMIT);
+        let tiny = Settings {
+            hud_max_height: 5,
+            ..Default::default()
+        };
+        assert_eq!(tiny.clamped_max_height(), HUD_MIN_HEIGHT);
+
+        let huge = Settings {
+            hud_max_height: 99_999,
+            ..Default::default()
+        };
+        assert_eq!(huge.clamped_max_height(), HUD_MAX_HEIGHT_LIMIT);
     }
 }
