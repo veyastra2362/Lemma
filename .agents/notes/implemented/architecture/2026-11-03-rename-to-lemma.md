@@ -52,6 +52,10 @@ Status: implemented
   旧版本会读不到设置——已在迁移里选择"只搬两个已知文件"，把影响面压到最小。
 - 代价 2：旧目录会残留空壳（`logs/`、`probe/`），需要用户手动删；暂不做清理，避免误删。
 - 代价 3：`identifier` 变更意味着新旧版本**不能共存**（同一台机器上是两个不同的应用）。
+- 代价 4：远端仓库建仓时自动生成过一个 `Initial commit`，其 README 写着占位名 `# Retrace`（属勘误）。
+  首次推送时用 `--allow-unrelated-histories` 合并保留了它，随后确认该提交除这两行外无内容，
+  已 `reset --hard` 丢掉它并 `push --force-with-lease` 重写远端历史——仓库只有一次建仓、
+  没有其他贡献者，且该提交通篇是错字，因此重写比重留一份勘误更合适。**此后不要再改写历史。**
 - 遗留：安装包名与 GitHub Release 命名规则（`Lemma_0.1.0_x64-setup.exe`）尚未与实际发布内容对齐。
 
 ## Testing

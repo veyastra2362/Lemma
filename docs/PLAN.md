@@ -1,7 +1,7 @@
 # Lemma — 高频深度阅读桌面辅助系统 · 工程计划
 
 > 状态：v0.1 草案（待决策项见 §7）
-> 工作目录：`D:\Code\Trans`（当前为空仓库）
+> 工作目录：`D:\Code\Lemma`（仓库名 Lemma；改名前的数据目录见 `.agents/notes/implemented/architecture/2026-11-03-rename-to-lemma.md`）
 > 目标平台：Windows 10 1809+ / 11，x64（首发），预留 macOS/Linux 抽象位
 
 ---
