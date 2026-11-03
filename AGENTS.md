@@ -92,3 +92,26 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 > 为什么允许这一个钩子：`RegisterHotKey` 只能注册「修饰键 + 主键」的组合，
 > 表达不了「双击 Ctrl」这种时序动作，而双击 Ctrl 是主要用户的呼出习惯。
 > 代价是杀软可能关注，所以把边界压到最小并写死在这里。
+
+## 决策笔记（重要改动必须留笔记）
+
+本仓库接入 DeepSeek Harness 的决策笔记体系。技能**全局安装**在本机：
+
+```
+C:\Users\ASUS\.agents\skills\write-notes-like-deepseek\SKILL.md
+```
+
+上面那些「踩过的坑」「不变式」回答的是**现在必须怎样**；笔记回答的是**当初为什么这样定、放弃了什么**——这两件事 AGENTS.md 和代码都表达不了。
+
+1. 非平凡改动（改了行为、架构、跨文件契约、流程与工具链、测试策略、落盘/网络/配置格式）前，遵循上述 SKILL.md 写或更新笔记；机械性小改（样式、格式化、打标、不改行为的补丁、常规 CRUD）直接提交。
+2. 写之前先检索 `.agents/notes/` 里的同主题旧笔记：有归属就地更新；新想法先放 `proposed/`，落地随同代码改动转 `implemented/`；新方案彻底取代旧决策时，同批归档旧篇并标明被谁取代。
+3. 被放弃的方案先写它最强的理由，再解释为什么不用。
+4. 提交前跑 `pnpm verify-notes`（tree + format + archived 三线串跑），红了先修再交。
+
+```
+.agents/notes/{proposed,implemented,rejected,archived}/<class>/yyyy-mm-dd-主题.md
+```
+
+`class` 只有六个：`feature` / `bug-fix` / `simplification` / `architecture` / `process` / `testing`。不建 `INDEX.md`。
+
+分工：**AGENTS.md 写规则（必须怎样），笔记写理由与取舍（为什么、放弃了什么）**。规则要改，先改笔记再改这里。
