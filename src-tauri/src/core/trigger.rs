@@ -1,7 +1,10 @@
 //! 触发方式装配：双击 Ctrl 与全局热键二选一。
 //!
 //! 键盘观察是**常驻安装**的（安装/卸载低级钩子代价高、且卸载时机容易出竞态），
-//! 是否真的呼出由设置决定——所以切换触发方式只是改一个判断，不需要动钩子。
+//! 是否真的呼出由设置决定——切换触发方式只是改一个判断，不需要动钩子。
+//!
+//! **顺序**：先取词，再呼出。HUD 一显示就会抢走前台焦点，而剪贴板兜底是给前台
+//! 窗口发 Ctrl+C 的，顺序反了就对着自己发的 HUD 发 Ctrl+C。
 
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -11,7 +14,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::core::double_tap::DoubleTap;
 use crate::core::settings::{SettingsStore, Trigger};
-use crate::core::{logs, shell};
+use crate::core::{logs, selection, shell};
 use crate::platform;
 
 /// 安装键盘观察，并按当前设置装配热键。
@@ -29,16 +32,14 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         if !fired {
             return;
         }
+        if handle.state::<SettingsStore>().get().trigger != Trigger::DoubleControl {
+            return;
+        }
 
-        // 钩子回调在平台线程里，窗口操作要回到主线程。
-        let check = handle.clone();
-        let inner = handle.clone();
-        let _ = check.run_on_main_thread(move || {
-            if inner.state::<SettingsStore>().get().trigger == Trigger::DoubleControl {
-                logs::line("trigger double-tap fits");
-                shell::toggle(&inner);
-            }
-        });
+        logs::line("trigger double-tap fits");
+        // 取词会阻塞几十毫秒，放在这个观察线程上做，别阻塞主线程。
+        selection::capture();
+        shell::toggle_on_main(&handle);
     })?;
     logs::line("keyboard watch installed");
 
@@ -64,6 +65,7 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     manager
         .on_shortcut(shortcut, |app, _shortcut, event| {
             if event.state == ShortcutState::Pressed {
+                selection::capture();
                 shell::toggle_on_main(app);
             }
         })

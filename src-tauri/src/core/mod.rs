@@ -3,6 +3,7 @@
 pub mod double_tap;
 pub mod logs;
 pub mod perf;
+pub mod selection;
 pub mod settings;
 pub mod shell;
 pub mod text;

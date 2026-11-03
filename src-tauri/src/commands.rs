@@ -39,6 +39,12 @@ pub fn perf_stats(perf: State<'_, Perf>) -> RuntimeStats {
     perf.stats()
 }
 
+/// 最近一次取词结果。HUD 显示后向 Rust 要这个。
+#[tauri::command]
+pub fn last_capture() -> Option<crate::core::selection::Capture> {
+    crate::core::selection::last()
+}
+
 #[tauri::command]
 pub fn get_settings(store: State<'_, SettingsStore>) -> Settings {
     store.get()

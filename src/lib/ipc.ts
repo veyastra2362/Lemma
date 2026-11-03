@@ -1,7 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import type { PaintSample, RuntimeStats, Settings, Trigger } from "../types";
+import type {
+  Capture,
+  PaintSample,
+  RuntimeStats,
+  Settings,
+  Trigger,
+} from "../types";
 
 /** 是否跑在 Tauri 宿主里（`pnpm dev` 直接开浏览器时为 false）。 */
 export function isTauri(): boolean {
@@ -48,6 +54,8 @@ export const ipc = {
       invoke<void>("frontend_ready", { label }),
     ),
   perfStats: () => invoke<RuntimeStats>("perf_stats"),
+  lastCapture: () =>
+    withRetry("last_capture", () => invoke<Capture | null>("last_capture")),
   getSettings: () =>
     withRetry("get_settings", () => invoke<Settings>("get_settings")),
   /** 应用失败（如热键被占用）会 reject，Rust 侧已回滚到旧配置。 */

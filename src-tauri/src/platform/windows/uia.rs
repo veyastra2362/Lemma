@@ -5,8 +5,11 @@
 //! （UIA 调用会阻塞等待目标应用的响应，某些应用没响应时要等好几秒）。
 //!
 //! 所以这里起一个常驻的 UIA 线程：STA 初始化 + 建一次 `IUIAutomation`，之后所有请求
-//! 通过 channel 串行交给它，调用方在主线程里等 reply。串行化同时也避免了
-//! 「多个 IPC 命令同时怼 UIA」造成的互相拖慢。
+//! 通过 channel 串行交给它，调用方在自己线程里等 reply。串行化同时也避免了
+//! 「多个请求同时怼 UIA」造成的互相拖慢。
+//!
+//! `probe`（诊断）和 `capture`（真取词）共用同一套采集逻辑 [`gather`]，
+//! 区别只在于 probe 额外探测控件支持哪些 pattern、并记录每档耗时。
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -30,63 +33,126 @@ use windows::Win32::UI::Accessibility::{
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 use windows::core::PWSTR;
 
-use crate::platform::uia::{ElementInfo, ProbeReport, Selection, TierProbe};
+use crate::platform::uia::{ElementInfo, ProbeReport, Selection, TierProbe, UiaOutcome};
 
-/// UIA 调用可能阻塞，这里给它一个上限，避免用户感觉「按了没反应」。
 const MAX_TEXT_CHARS: i32 = -1;
 
-struct ProbeJob {
-    point: Option<POINT>,
-    reply: Sender<ProbeReport>,
+enum Job {
+    Probe {
+        point: Option<POINT>,
+        reply: Sender<ProbeReport>,
+    },
+    Capture {
+        reply: Sender<UiaOutcome>,
+    },
 }
 
-static PROBE_TX: OnceLock<Sender<ProbeJob>> = OnceLock::new();
+static JOB_TX: OnceLock<Sender<Job>> = OnceLock::new();
 static INIT_LOCK: Mutex<()> = Mutex::new(());
 static REQUEST_SEQ: AtomicU32 = AtomicU32::new(0);
 
-/// 探测光标（或指定点）处的取词能力。
+/// 一次采集的原始结果。
+struct Gathered {
+    cursor: POINT,
+    element: ElementInfo,
+    /// `Some` 表示拿到了文本范围（内容可能为空串）。
+    selection: Option<String>,
+    word: Option<String>,
+    paragraph: String,
+    selection_ms: f64,
+    word_ms: f64,
+    /// 只在 probe 路径上填；取词热路径不跑这 5 次跨进程查询。
+    patterns: Vec<String>,
+    /// 未命中原因 / 备注。
+    note: String,
+}
+
+impl Gathered {
+    /// 选区优先，其次光标所在词。两者都是空白则返回 None。
+    fn best_text(&self) -> Option<&str> {
+        self.selection
+            .as_deref()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .or_else(|| {
+                self.word
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty())
+            })
+    }
+}
+
 pub(crate) fn probe(point: Option<(i32, i32)>) -> ProbeReport {
-    let tx = match worker() {
-        Ok(tx) => tx,
-        Err(error) => {
-            return ProbeReport {
-                error: Some(error),
-                ..Default::default()
-            };
-        }
+    let Some(tx) = worker_checked() else {
+        return ProbeReport {
+            error: Some("UIA 线程不可用".to_string()),
+            ..Default::default()
+        };
     };
 
     let (reply_tx, reply_rx) = mpsc::channel();
-    let job = ProbeJob {
+    let seq = REQUEST_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+    if let Err(error) = tx.send(Job::Probe {
         point: point.map(|(x, y)| POINT { x, y }),
         reply: reply_tx,
-    };
-    let seq = REQUEST_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
-    if let Err(error) = tx.send(job) {
+    }) {
         return ProbeReport {
-            error: Some(format!("UIA 线程不可用（请求 #{seq}）：{error}")),
+            error: Some(format!("投递探测请求失败（#{seq}）：{error}")),
             ..Default::default()
         };
     }
     reply_rx.recv().unwrap_or_else(|error| ProbeReport {
-        error: Some(format!("UIA 线程没有回话（请求 #{seq}）：{error}")),
+        error: Some(format!("UIA 线程没有回话（#{seq}）：{error}")),
         ..Default::default()
     })
 }
 
-fn worker() -> Result<&'static Sender<ProbeJob>, String> {
-    if let Some(tx) = PROBE_TX.get() {
+pub(crate) fn capture() -> UiaOutcome {
+    let Some(tx) = worker_checked() else {
+        return UiaOutcome {
+            note: "UIA 线程不可用".to_string(),
+            ..Default::default()
+        };
+    };
+
+    let (reply_tx, reply_rx) = mpsc::channel();
+    let seq = REQUEST_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+    if let Err(error) = tx.send(Job::Capture { reply: reply_tx }) {
+        return UiaOutcome {
+            note: format!("投递取词请求失败（#{seq}）：{error}"),
+            ..Default::default()
+        };
+    }
+    reply_rx.recv().unwrap_or_else(|error| UiaOutcome {
+        note: format!("UIA 线程没有回话（#{seq}）：{error}"),
+        ..Default::default()
+    })
+}
+
+fn worker_checked() -> Option<&'static Sender<Job>> {
+    match worker() {
+        Ok(tx) => Some(tx),
+        Err(error) => {
+            crate::core::logs::line(format!("uia worker failed: {error}"));
+            None
+        }
+    }
+}
+
+fn worker() -> Result<&'static Sender<Job>, String> {
+    if let Some(tx) = JOB_TX.get() {
         return Ok(tx);
     }
 
     let _guard = INIT_LOCK
         .lock()
         .map_err(|_| "UIA 初始化锁被污染".to_string())?;
-    if let Some(tx) = PROBE_TX.get() {
+    if let Some(tx) = JOB_TX.get() {
         return Ok(tx);
     }
 
-    let (tx, rx) = mpsc::channel::<ProbeJob>();
+    let (tx, rx) = mpsc::channel::<Job>();
     let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
 
     std::thread::spawn(move || {
@@ -106,8 +172,14 @@ fn worker() -> Result<&'static Sender<ProbeJob>, String> {
         let _ = ready_tx.send(Ok(()));
 
         for job in rx {
-            let report = run_probe(&automation, job.point);
-            let _ = job.reply.send(report);
+            match job {
+                Job::Probe { point, reply } => {
+                    let _ = reply.send(run_probe(&automation, point));
+                }
+                Job::Capture { reply } => {
+                    let _ = reply.send(run_capture(&automation));
+                }
+            }
         }
 
         // SAFETY: 与上面的 CoInitializeEx 配对。
@@ -118,106 +190,199 @@ fn worker() -> Result<&'static Sender<ProbeJob>, String> {
         .recv()
         .map_err(|_| "UIA 线程启动失败".to_string())??;
 
-    let _ = PROBE_TX.set(tx);
-    Ok(PROBE_TX.get().expect("刚刚设置过"))
+    let _ = JOB_TX.set(tx);
+    Ok(JOB_TX.get().expect("刚刚设置过"))
+}
+
+fn run_capture(automation: &IUIAutomation) -> UiaOutcome {
+    match gather(automation, None, false) {
+        Ok(gathered) => {
+            let app = gathered.element.process_name.clone();
+            UiaOutcome {
+                selection: gathered.selection.clone(),
+                word: gathered.word.clone(),
+                paragraph: gathered.paragraph.clone(),
+                app,
+                note: if !gathered.note.is_empty() {
+                    gathered.note.clone()
+                } else if gathered.best_text().is_some() {
+                    String::new()
+                } else {
+                    "UIA 没拿到文本".to_string()
+                },
+            }
+        }
+        Err(error) => UiaOutcome {
+            note: error,
+            ..Default::default()
+        },
+    }
 }
 
 fn run_probe(automation: &IUIAutomation, point: Option<POINT>) -> ProbeReport {
-    let mut report = ProbeReport::default();
+    let gathered = match gather(automation, point, true) {
+        Ok(gathered) => gathered,
+        Err(error) => {
+            return ProbeReport {
+                tiers: vec![miss("T1-selection", &error), miss("T0-word", &error)],
+                error: Some(error),
+                ..Default::default()
+            };
+        }
+    };
 
+    // 光标位置要在 gather 之后从 Gathered 里取，这里不重复查询。
+    let cursor = [gathered.cursor.x, gathered.cursor.y];
+
+    ProbeReport {
+        cursor,
+        element: Some(gathered.element.clone()),
+        patterns: gathered.patterns.clone(),
+        tiers: vec![
+            describe_tier("T1-selection", &gathered.selection, gathered.selection_ms),
+            describe_tier("T0-word", &gathered.word, gathered.word_ms),
+        ],
+        context: Some(Selection {
+            text: gathered.best_text().unwrap_or_default().to_string(),
+            paragraph: gathered.paragraph.clone(),
+        }),
+        error: None,
+    }
+}
+
+fn describe_tier(tier: &str, text: &Option<String>, elapsed_ms: f64) -> TierProbe {
+    match text {
+        Some(text) => {
+            let trimmed = text.trim();
+            TierProbe {
+                tier: tier.to_string(),
+                hit: !trimmed.is_empty(),
+                chars: trimmed.chars().count(),
+                elapsed_ms,
+                detail: if trimmed.is_empty() {
+                    "空".to_string()
+                } else {
+                    clip(trimmed)
+                },
+            }
+        }
+        None => miss(tier, "未拿到文本范围"),
+    }
+}
+
+/// 采集核心：定位光标 → 找元素 → 取选区 / 光标词 / 段落。
+fn gather(
+    automation: &IUIAutomation,
+    point: Option<POINT>,
+    with_patterns: bool,
+) -> Result<Gathered, String> {
     let cursor = match point {
         Some(point) => point,
         None => {
             let mut point = POINT::default();
             // SAFETY: point 是本栈帧上的有效可写结构。
             if unsafe { GetCursorPos(&mut point) }.is_err() {
-                report.error = Some("拿不到光标位置".to_string());
-                return report;
+                return Err("拿不到光标位置".to_string());
             }
             point
         }
     };
-    report.cursor = [cursor.x, cursor.y];
 
-    // SAFETY: 纯查询调用，无所有权转移。
-    let element = match unsafe { automation.ElementFromPoint(cursor) } {
-        Ok(element) => element,
-        Err(error) => {
-            report.error = Some(format!("ElementFromPoint 失败：{error}"));
-            return report;
-        }
-    };
-    report.element = Some(describe(&element));
-    report.patterns = detect_patterns(&element);
-
-    // SAFETY: GetCurrentPatternAs 在控件不支持该 pattern 时返回错误，不会崩。
-    let pattern: IUIAutomationTextPattern =
-        match unsafe { element.GetCurrentPatternAs(UIA_TextPatternId) } {
-            Ok(pattern) => pattern,
-            Err(error) => {
-                let reason = format!(
-                    "控件不支持 TextPattern（HRESULT 0x{:08X}）",
-                    error.code().0 as u32
-                );
-                report.tiers.push(miss("T1-selection", &reason));
-                report.tiers.push(miss("T0-word", &reason));
-                return report;
-            }
-        };
-
-    // ---- T1：用户已有选区 ----
+    // ---- T1：焦点元素上的选区 ----
     let started = Instant::now();
-    let selection_range = read_selection(&pattern);
-    let elapsed = started.elapsed().as_secs_f64() * 1000.0;
-    let selection_text = selection_range.as_ref().map(range_text).unwrap_or_default();
-    let trimmed = selection_text.trim();
-
-    report.tiers.push(match selection_range.as_ref() {
-        Some(_) => TierProbe {
-            tier: "T1-selection".to_string(),
-            hit: !trimmed.is_empty(),
-            chars: trimmed.chars().count(),
-            elapsed_ms: elapsed,
-            detail: clip(trimmed),
-        },
-        None => miss("T1-selection", "没有选区"),
+    let focused = unsafe { automation.GetFocusedElement() }.ok();
+    let focused_info = focused.as_ref().map(describe);
+    let focused_patterns = if with_patterns {
+        focused.as_ref().map(detect_patterns).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let selection = focused.as_ref().and_then(|element| {
+        // SAFETY: 不支持该 pattern 时返回错误，已被 ok() 吃掉。
+        let pattern: IUIAutomationTextPattern =
+            unsafe { element.GetCurrentPatternAs(UIA_TextPatternId) }.ok()?;
+        read_selection(&pattern).as_ref().map(range_text)
     });
+    let selection_ms = started.elapsed().as_secs_f64() * 1000.0;
 
     // ---- T0：光标所在单词 ----
     let started = Instant::now();
-    let word_range = range_from_point(&pattern, cursor);
-    let elapsed = started.elapsed().as_secs_f64() * 1000.0;
-    let word_text = word_range.as_ref().map(range_text).unwrap_or_default();
-    let word_trimmed = word_text.trim();
-
-    report.tiers.push(match word_range.as_ref() {
-        Some(_) => TierProbe {
-            tier: "T0-word".to_string(),
-            hit: !word_trimmed.is_empty(),
-            chars: word_trimmed.chars().count(),
-            elapsed_ms: elapsed,
-            detail: clip(word_trimmed),
-        },
-        None => miss("T0-word", "RangeFromPoint 失败或扩不到词"),
+    // SAFETY: 纯查询调用，无所有权转移。
+    let cursor_element = unsafe { automation.ElementFromPoint(cursor) }.ok();
+    let cursor_info = cursor_element.as_ref().map(describe);
+    let cursor_patterns = if with_patterns {
+        cursor_element
+            .as_ref()
+            .map(detect_patterns)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let word = cursor_element.as_ref().and_then(|element| {
+        let pattern: IUIAutomationTextPattern =
+            unsafe { element.GetCurrentPatternAs(UIA_TextPatternId) }.ok()?;
+        range_from_point(&pattern, cursor).as_ref().map(range_text)
     });
+    let word_ms = started.elapsed().as_secs_f64() * 1000.0;
 
-    // ---- 上下文：以命中的 range 为锚点扩到句子 / 段落 ----
-    let anchor = selection_range
-        .filter(|_| !trimmed.is_empty())
-        .or_else(|| word_range.filter(|_| !word_trimmed.is_empty()));
+    // ---- 段落：以命中的那一档为锚 ----
+    let has_selection = selection
+        .as_deref()
+        .map(|text| !text.trim().is_empty())
+        .unwrap_or(false);
 
-    if let Some(anchor) = anchor {
-        report.context = Some(Selection {
-            text: if trimmed.is_empty() {
-                word_trimmed.to_string()
-            } else {
-                trimmed.to_string()
-            },
-            paragraph: expand_text(&anchor, TextUnit_Paragraph),
-        });
-    }
+    let paragraph = if has_selection {
+        paragraph_of(focused.as_ref(), None)
+    } else {
+        paragraph_of(cursor_element.as_ref(), Some(cursor))
+    };
 
-    report
+    let (element, patterns) = if has_selection {
+        (focused_info, focused_patterns)
+    } else {
+        (cursor_info.or(focused_info), cursor_patterns)
+    };
+
+    let note = if element.is_none() {
+        "拿不到任何 UIA 元素".to_string()
+    } else {
+        String::new()
+    };
+
+    Ok(Gathered {
+        cursor,
+        element: element.unwrap_or_default(),
+        selection,
+        word,
+        paragraph,
+        selection_ms,
+        word_ms,
+        patterns,
+        note,
+    })
+}
+
+/// 取锚点所在段落。锚点可以是焦点元素（读选区），也可以是光标下的元素（读光标词）。
+fn paragraph_of(element: Option<&IUIAutomationElement>, point: Option<POINT>) -> String {
+    let Some(element) = element else {
+        return String::new();
+    };
+    // SAFETY: 不支持时返回 None。
+    let Ok(pattern) =
+        (unsafe { element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId) })
+    else {
+        return String::new();
+    };
+
+    let anchor = match point {
+        Some(point) => range_from_point(&pattern, point),
+        None => read_selection(&pattern),
+    };
+
+    anchor
+        .as_ref()
+        .map(|range| expand_text(range, TextUnit_Paragraph))
+        .unwrap_or_default()
 }
 
 fn miss(tier: &str, reason: &str) -> TierProbe {
@@ -228,39 +393,6 @@ fn miss(tier: &str, reason: &str) -> TierProbe {
         elapsed_ms: 0.0,
         detail: reason.to_string(),
     }
-}
-
-/// 逐个试控件支持哪些 pattern。
-///
-/// 这一步是「先量再写」的核心：不同应用暴露的 pattern 差别极大，
-/// 有的只给 LegacyIAccessible（MSAA 桥），有的只给 Value 不给 Text。
-fn detect_patterns(element: &IUIAutomationElement) -> Vec<String> {
-    let mut found = Vec::new();
-
-    macro_rules! probe_pattern {
-        ($name:literal, $id:path, $iface:ty) => {
-            // SAFETY: 不支持时返回错误，已被 match 吃掉。
-            if unsafe { element.GetCurrentPatternAs::<$iface>($id) }.is_ok() {
-                found.push($name.to_string());
-            }
-        };
-    }
-
-    probe_pattern!("Text", UIA_TextPatternId, IUIAutomationTextPattern);
-    probe_pattern!("Text2", UIA_TextPattern2Id, IUIAutomationTextPattern2);
-    probe_pattern!("Value", UIA_ValuePatternId, IUIAutomationValuePattern);
-    probe_pattern!(
-        "LegacyIAccessible",
-        UIA_LegacyIAccessiblePatternId,
-        IUIAutomationLegacyIAccessiblePattern
-    );
-    probe_pattern!(
-        "Selection",
-        UIA_SelectionPatternId,
-        IUIAutomationSelectionPattern
-    );
-
-    found
 }
 
 fn clip(text: &str) -> String {
@@ -314,13 +446,10 @@ fn describe(element: &IUIAutomationElement) -> ElementInfo {
     // SAFETY: 全是 Current* 只读属性查询，失败就留空，不影响其它字段。
     let pid = unsafe { element.CurrentProcessId() }.unwrap_or(0) as u32;
 
-    let class_name = bstr(unsafe { element.CurrentClassName() });
-    let localized_type = bstr(unsafe { element.CurrentLocalizedControlType() });
-
     ElementInfo {
         name: bstr(unsafe { element.CurrentName() }),
-        class_name,
-        control_type: localized_type,
+        class_name: bstr(unsafe { element.CurrentClassName() }),
+        control_type: bstr(unsafe { element.CurrentLocalizedControlType() }),
         automation_id: bstr(unsafe { element.CurrentAutomationId() }),
         process_id: pid,
         process_name: process_name(pid),
@@ -363,4 +492,34 @@ fn process_name(pid: u32) -> String {
         let path = String::from_utf16_lossy(&buffer[..size as usize]);
         path.rsplit(['\\', '/']).next().unwrap_or("").to_string()
     }
+}
+
+/// 逐个试控件支持哪些 pattern（诊断用，只在 probe 路径上跑）。
+pub(crate) fn detect_patterns(element: &IUIAutomationElement) -> Vec<String> {
+    let mut found = Vec::new();
+
+    macro_rules! probe_pattern {
+        ($name:literal, $id:path, $iface:ty) => {
+            // SAFETY: 不支持时返回错误，已被 is_ok 吃掉。
+            if unsafe { element.GetCurrentPatternAs::<$iface>($id) }.is_ok() {
+                found.push($name.to_string());
+            }
+        };
+    }
+
+    probe_pattern!("Text", UIA_TextPatternId, IUIAutomationTextPattern);
+    probe_pattern!("Text2", UIA_TextPattern2Id, IUIAutomationTextPattern2);
+    probe_pattern!("Value", UIA_ValuePatternId, IUIAutomationValuePattern);
+    probe_pattern!(
+        "LegacyIAccessible",
+        UIA_LegacyIAccessiblePatternId,
+        IUIAutomationLegacyIAccessiblePattern
+    );
+    probe_pattern!(
+        "Selection",
+        UIA_SelectionPatternId,
+        IUIAutomationSelectionPattern
+    );
+
+    found
 }

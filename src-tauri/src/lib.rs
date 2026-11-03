@@ -27,6 +27,7 @@ pub fn run() {
             commands::open_settings,
             commands::frontend_ready,
             commands::perf_stats,
+            commands::last_capture,
             commands::get_settings,
             commands::update_settings,
             commands::report_first_paint,

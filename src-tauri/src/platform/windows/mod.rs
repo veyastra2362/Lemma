@@ -57,4 +57,7 @@ mod keyboard;
 pub(crate) use keyboard::watch as watch_keyboard;
 
 mod uia;
-pub(crate) use uia::probe as uia_probe;
+pub(crate) use uia::{capture as uia_capture, probe as uia_probe};
+
+mod clipboard;
+pub(crate) use clipboard::{copy_selection, restore_clipboard};

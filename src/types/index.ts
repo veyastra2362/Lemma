@@ -20,3 +20,18 @@ export interface Settings {
   /** 形如 `Alt+Q`，仅在 trigger === "hotkey" 时生效。 */
   hotkey: string;
 }
+
+/** 取词命中的档位，与 Rust 侧 `core::selection::Tier` 对应。 */
+export type CaptureTier = "selection" | "word" | "clipboard";
+
+export interface Capture {
+  text: string;
+  sentence: string;
+  paragraph: string;
+  /** null 表示这次没取到。 */
+  tier: CaptureTier | null;
+  /** 来源进程名，诊断用。 */
+  app: string;
+  elapsedMs: number;
+  error: string | null;
+}

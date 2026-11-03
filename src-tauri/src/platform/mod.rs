@@ -3,6 +3,7 @@
 //! 纪律：`cfg(target_os = ...)` 只允许出现在本文件与各后端内部。
 //! `core/` 永远只通过这里导出的函数与类型访问操作系统。
 
+pub mod clipboard;
 pub mod keyboard;
 pub mod placement;
 pub mod uia;
@@ -41,4 +42,19 @@ pub fn watch_keyboard(
 /// 探测某个屏幕点（默认光标位置）的取词能力，用于建立支持矩阵。
 pub fn uia_probe(point: Option<(i32, i32)>) -> uia::ProbeReport {
     backend::uia_probe(point)
+}
+
+/// 走 UIA 取词（选区优先，其次光标所在词）。不做剪贴板兜底。
+pub fn uia_capture() -> uia::UiaOutcome {
+    backend::uia_capture()
+}
+
+/// 模拟 Ctrl+C 把选区复制出来（T2 兜底）。
+pub fn copy_selection(timeout: std::time::Duration) -> Result<clipboard::ClipboardLease, String> {
+    backend::copy_selection(timeout)
+}
+
+/// 还原剪贴板（由 `ClipboardLease::drop` 调用）。
+pub fn restore_clipboard(previous: Option<&str>, after_seq: u32) {
+    backend::restore_clipboard(previous, after_seq)
 }

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { RuntimeStats, Settings } from "../types";
+import type { Capture, RuntimeStats, Settings } from "../types";
 
 interface AppState {
   stats: RuntimeStats | null;
@@ -11,6 +11,9 @@ interface AppState {
   /** 当前生效的设置；null 表示还没读到。 */
   settings: Settings | null;
   setSettings: (settings: Settings) => void;
+  /** 最近一次取词结果。 */
+  capture: Capture | null;
+  setCapture: (capture: Capture | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -20,4 +23,6 @@ export const useAppStore = create<AppState>((set) => ({
   setLatencyMs: (latencyMs) => set({ latencyMs }),
   settings: null,
   setSettings: (settings) => set({ settings }),
+  capture: null,
+  setCapture: (capture) => set({ capture }),
 }));

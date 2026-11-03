@@ -16,6 +16,7 @@ const BLUR_GRACE_MS = 250;
  */
 export function useHudLifecycle(): void {
   const setLatencyMs = useAppStore((state) => state.setLatencyMs);
+  const setCapture = useAppStore((state) => state.setCapture);
   const shownAt = useRef(0);
 
   useEffect(() => {
@@ -51,6 +52,15 @@ export function useHudLifecycle(): void {
           void ipc.reportFirstPaint(seq).catch(() => undefined);
         }
       });
+      // 取词已经在 Rust 侧、呼出 HUD 之前完成，这里只是把它取回来渲染。
+      void ipc
+        .lastCapture()
+        .then((capture) => {
+          if (!disposed) {
+            setCapture(capture);
+          }
+        })
+        .catch(() => undefined);
     }).then(keep);
 
     void onFirstPaint((sample) => setLatencyMs(sample.total_ms))
@@ -76,5 +86,5 @@ export function useHudLifecycle(): void {
         unlisten();
       }
     };
-  }, [setLatencyMs]);
+  }, [setLatencyMs, setCapture]);
 }

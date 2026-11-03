@@ -21,6 +21,21 @@ pub struct Selection {
     pub paragraph: String,
 }
 
+/// 一次 UIA 取词的结果（不含剪贴板兜底）。档位选择留给 core 决定。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UiaOutcome {
+    /// `TextPattern.GetSelection()` 拿到的选区文本（空选区时为 None）。
+    pub selection: Option<String>,
+    /// `RangeFromPoint` + `WordUnit` 拿到的光标所在词。
+    pub word: Option<String>,
+    /// 锚点所在段落，用来切句子。
+    pub paragraph: String,
+    /// 命中的进程名，用于诊断。
+    pub app: String,
+    /// 未命中原因 / 备注。
+    pub note: String,
+}
+
 /// 命中的控件信息，用于诊断与支持矩阵。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ElementInfo {

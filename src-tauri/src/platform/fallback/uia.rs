@@ -8,3 +8,10 @@ pub(crate) fn probe(_point: Option<(i32, i32)>) -> ProbeReport {
         ..Default::default()
     }
 }
+
+pub(crate) fn capture() -> crate::platform::uia::UiaOutcome {
+    crate::platform::uia::UiaOutcome {
+        note: "当前平台未实现 UI Automation 取词".to_string(),
+        ..Default::default()
+    }
+}
