@@ -82,6 +82,22 @@ pub fn place_near_cursor(cursor: Point, size: Size, work_area: Rect, gap: i32) -
     )
 }
 
+/// 保持左上角不变，只把矩形钳进工作区。
+///
+/// 用于「调整尺寸」这种不该改变锚点的场合：把窗口重新锚到光标上会让它每点一次
+/// 就往右下挪一次（用户点卡片时鼠标正在 HUD 里）。
+pub fn clamp_origin(origin: Point, size: Size, work_area: Rect) -> Point {
+    let width = size.width.min(work_area.size.width);
+    let height = size.height.min(work_area.size.height);
+    let max_x = work_area.right() as i64 - width as i64;
+    let max_y = work_area.bottom() as i64 - height as i64;
+
+    Point {
+        x: clamp(origin.x, work_area.origin.x, saturating_i32(max_x)),
+        y: clamp(origin.y, work_area.origin.y, saturating_i32(max_y)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,6 +186,49 @@ mod tests {
             }
         );
         assert_eq!(rect.origin, Point { x: 0, y: 0 });
+    }
+
+    #[test]
+    fn clamp_origin_keeps_a_fitting_window_in_place() {
+        let origin = Point { x: 400, y: 300 };
+        let rect_size = Size {
+            width: 420,
+            height: 300,
+        };
+        assert_eq!(clamp_origin(origin, rect_size, WORK), origin);
+    }
+
+    #[test]
+    fn clamp_origin_pushes_back_when_the_window_grows_past_the_edge() {
+        // 窗口变高后底部超出工作区，应该上移而不是重新锚定
+        let origin = Point { x: 400, y: 900 };
+        let tall = Size {
+            width: 420,
+            height: 400,
+        };
+        let clamped = clamp_origin(origin, tall, WORK);
+        assert_eq!(clamped.x, 400);
+        assert_eq!(clamped.y, WORK.bottom() - 400);
+    }
+
+    #[test]
+    fn clamp_origin_handles_negative_monitors() {
+        let secondary = Rect::new(
+            Point { x: -1920, y: -200 },
+            Size {
+                width: 1920,
+                height: 1080,
+            },
+        );
+        let clamped = clamp_origin(
+            Point { x: -1950, y: -260 },
+            Size {
+                width: 420,
+                height: 300,
+            },
+            secondary,
+        );
+        assert_eq!(clamped, Point { x: -1920, y: -200 });
     }
 
     #[test]

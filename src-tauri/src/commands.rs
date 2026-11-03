@@ -82,6 +82,11 @@ pub fn update_settings(
     Ok(saved)
 }
 
+#[tauri::command]
+pub fn close_settings(app: AppHandle) {
+    crate::core::shell::close_settings(&app);
+}
+
 /// 查一个词（Deck 下探用）。未收录返回 null，不是错误。
 #[tauri::command]
 pub fn lookup_word(word: String) -> Option<crate::core::dict::Entry> {

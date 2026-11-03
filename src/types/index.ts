@@ -34,6 +34,8 @@ export interface Settings {
   captureMode: CaptureMode;
   /** HUD 自适应的最大高度（逻辑像素）。 */
   hudMaxHeight: number;
+  /** 是否显示 HUD 底部那排快捷键提示。 */
+  showHints: boolean;
   cardSections: CardSections;
 }
 

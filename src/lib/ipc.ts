@@ -49,6 +49,7 @@ export const ipc = {
   hudHide: () => invoke<void>("hud_hide"),
   hudToggle: () => invoke<void>("hud_toggle"),
   openSettings: () => invoke<void>("open_settings"),
+  closeSettings: () => invoke<void>("close_settings"),
   frontendReady: (label: string) =>
     withRetry("frontend_ready", () =>
       invoke<void>("frontend_ready", { label }),

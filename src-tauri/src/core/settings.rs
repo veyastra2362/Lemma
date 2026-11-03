@@ -80,6 +80,9 @@ pub struct Settings {
     /// HUD 自适应的最大高度（逻辑像素）。
     #[serde(default = "default_hud_max_height")]
     pub hud_max_height: u32,
+    /// 是否显示 HUD 底部那排快捷键提示。
+    #[serde(default = "default_true")]
+    pub show_hints: bool,
     #[serde(default)]
     pub card_sections: CardSections,
 }
@@ -92,6 +95,10 @@ fn default_hud_max_height() -> u32 {
     480
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -99,6 +106,7 @@ impl Default for Settings {
             hotkey: DEFAULT_HOTKEY.to_string(),
             capture_mode: default_capture_mode(),
             hud_max_height: default_hud_max_height(),
+            show_hints: true,
             card_sections: CardSections::default(),
         }
     }

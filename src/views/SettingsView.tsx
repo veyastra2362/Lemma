@@ -126,6 +126,21 @@ export function SettingsView() {
     [settings, setSettings],
   );
 
+  // Esc 关闭设置窗口（录制热键时由录制逻辑优先处理）。
+  useEffect(() => {
+    if (recording) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isTauri()) {
+        event.preventDefault();
+        void ipc.closeSettings();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [recording]);
+
   // 录制期间用捕获阶段拦下按键，避免组合键被页面的其它处理器吃掉。
   useEffect(() => {
     if (!recording) {
@@ -174,6 +189,22 @@ export function SettingsView() {
         <span className="text-[13px] font-medium">
           {t("appName")} · {t("settingsTitle")}
         </span>
+        <button
+          type="button"
+          onClick={() => void ipc.closeSettings()}
+          title={t("settingsClose")}
+          aria-label={t("settingsClose")}
+          className="ml-auto grid size-6 place-items-center rounded-md text-[var(--hud-muted)] transition hover:bg-white/10 hover:text-[var(--hud-text)]"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path
+              d="M2 2 L10 10 M10 2 L2 10"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
@@ -294,6 +325,44 @@ export function SettingsView() {
             {t("settingsHotkeySaveFailed")}：{error}
           </p>
         )}
+
+        {/* ---- 界面 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionLooks")}
+          </h2>
+          <button
+            type="button"
+            onClick={() => apply({ showHints: !(settings?.showHints ?? true) })}
+            className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
+              settings?.showHints ?? true
+                ? "border-[var(--hud-accent)] bg-white/5"
+                : "border-white/10 hover:border-white/25"
+            }`}
+          >
+            <span
+              className="mt-1 grid size-3 shrink-0 place-items-center rounded-[3px] border"
+              style={{
+                borderColor: (settings?.showHints ?? true)
+                  ? "var(--hud-accent)"
+                  : "oklch(1 0 0 / 25%)",
+              }}
+            >
+              {(settings?.showHints ?? true) && (
+                <span
+                  className="block size-1.5 rounded-[1px]"
+                  style={{ background: "var(--hud-accent)" }}
+                />
+              )}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[13px]">{t("settingsShowHints")}</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-[var(--hud-muted)]">
+                {t("settingsShowHintsHint")}
+              </span>
+            </span>
+          </button>
+        </section>
 
         {/* ---- 性能 ---- */}
         <section className="mt-5">

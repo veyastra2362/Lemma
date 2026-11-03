@@ -13,6 +13,8 @@ import { tokenize } from "../utils/tokens";
 const CHROME_HEIGHT_PX = 92;
 /** 面包屑出现时多出来的高度 */
 const BREADCRUMB_HEIGHT_PX = 24;
+/** 底部提示栏的高度（隐藏时要从补偿里减掉） */
+const FOOTER_HEIGHT_PX = 30;
 /** 页眉最小高度 */
 const MIN_HEIGHT_PX = 132;
 /** 只挂最近几张卡片到 DOM——这是「物理挂载深度限制」的前端部分。 */
@@ -182,6 +184,7 @@ export function ShellView() {
   const settings = useAppStore((state) => state.settings);
   const latencyMs = useAppStore((state) => state.latencyMs);
   const cards = useDeckStore((state) => state.cards);
+  const showHints = settings?.showHints ?? true;
   const push = useDeckStore((state) => state.push);
   const jumpTo = useDeckStore((state) => state.jumpTo);
 
@@ -197,7 +200,9 @@ export function ShellView() {
 
     const apply = () => {
             const chrome =
-        CHROME_HEIGHT_PX + (cards.length > 1 ? BREADCRUMB_HEIGHT_PX : 0);
+        CHROME_HEIGHT_PX +
+        (cards.length > 1 ? BREADCRUMB_HEIGHT_PX : 0) -
+        (showHints ? 0 : FOOTER_HEIGHT_PX);
       const desired = Math.max(
         MIN_HEIGHT_PX,
         Math.ceil(element.scrollHeight + chrome),
@@ -214,7 +219,7 @@ export function ShellView() {
     const observer = new ResizeObserver(apply);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [cards, settings]);
+  }, [cards, settings, showHints]);
 
   const openWord = (word: string) => {
     if (!isTauri()) {
@@ -307,13 +312,15 @@ export function ShellView() {
         </div>
       </main>
 
-      <footer className="flex shrink-0 items-center gap-2 border-t border-white/8 px-3 py-1.5">
-        <Hint label={triggerLabel(settings)} />
-        <Hint label={t("hudHintEscape")} />
-        <span className="ml-auto text-[11px] text-[var(--hud-muted)]">
-          {t("hudHintSettings")}
-        </span>
-      </footer>
+      {showHints && (
+        <footer className="flex shrink-0 items-center gap-2 border-t border-white/8 px-3 py-1.5">
+          <Hint label={triggerLabel(settings)} />
+          <Hint label={t("hudHintEscape")} />
+          <span className="ml-auto text-[11px] text-[var(--hud-muted)]">
+            {t("hudHintSettings")}
+          </span>
+        </footer>
+      )}
     </div>
   );
 }

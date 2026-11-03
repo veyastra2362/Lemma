@@ -139,7 +139,31 @@ pub fn resize_hud<R: Runtime>(app: &AppHandle<R>, height: f64) -> Result<(), Str
             HUD_WIDTH, height,
         )))
         .map_err(|e| format!("调整 HUD 尺寸失败：{e}"))?;
-    reposition(&window);
+
+    // 刻意**不**重新锚定到光标：用户点卡片时鼠标正在 HUD 上，
+    // 重新锚定会让窗口每点一次就往右下挪一次。只在越界时把它推回来。
+    if let (Ok(position), Ok(size)) = (window.outer_position(), window.outer_size())
+        && let Some(work_area) = platform::work_area_at(placement::Point {
+            x: position.x,
+            y: position.y,
+        })
+    {
+        let origin = placement::clamp_origin(
+            placement::Point {
+                x: position.x,
+                y: position.y,
+            },
+            placement::Size {
+                width: size.width,
+                height: size.height,
+            },
+            work_area,
+        );
+        if origin.x != position.x || origin.y != position.y {
+            let _ = window.set_position(PhysicalPosition::new(origin.x, origin.y));
+        }
+    }
+
     Ok(())
 }
 
@@ -237,6 +261,14 @@ fn wire_settings_close<R: Runtime>(window: &WebviewWindow<R>) {
 /// 注意这里必须分两步：先 `window.show()` 让宿主窗口出来，再显式给
 /// WebView 控制器同步一次尺寸并 `webview.show()`。只做前者时，之前被隐藏
 /// 过或尺寸为 0 的 WebView2 会在透明客户区外面留一圈可见边框。
+/// 关掉设置窗口（只隐藏，不退出进程）。
+pub fn close_settings<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(SETTINGS_LABEL) {
+        let _ = window.hide();
+        PlatformWindow::new(window).force_hide();
+    }
+}
+
 pub fn present_settings<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let window = ensure_window(app, SETTINGS_LABEL)?;
     wire_settings_close(&window);
