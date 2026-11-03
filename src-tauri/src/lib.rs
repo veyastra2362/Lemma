@@ -9,6 +9,36 @@ use crate::core::settings::SettingsStore;
 use crate::core::{logs, perf::Perf, shell, tray, trigger};
 use crate::platform::{PlatformWindow, window::WindowOps};
 
+/// 一次性迁移：把改名前的数据目录（`dev.lunar.trans`）里的设置与词库搬过来。
+///
+/// 换 `identifier` 就换了数据目录。不迁移的话用户会以为设置丢了、词库没了，
+/// 而 128 MB 词库重新导入也不是零成本。只搬已知的两个文件，不做整目录拷贝。
+fn migrate_legacy_data() {
+    let (Some(new_dir), Some(legacy_dir)) = (
+        crate::core::paths::app_data_dir(),
+        crate::core::paths::legacy_app_data_dir(),
+    ) else {
+        return;
+    };
+    if !legacy_dir.exists() || legacy_dir == new_dir {
+        return;
+    }
+
+    let _ = std::fs::create_dir_all(&new_dir);
+    for name in ["settings.json", "dict.redb"] {
+        let from = legacy_dir.join(name);
+        let to = new_dir.join(name);
+        if !from.exists() || to.exists() {
+            continue;
+        }
+        let moved = std::fs::rename(&from, &to).is_ok() || std::fs::copy(&from, &to).is_ok();
+        logs::line(format!(
+            "migrate {name}: {}",
+            if moved { "ok" } else { "failed" }
+        ));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -39,8 +69,10 @@ pub fn run() {
             let handle = app.handle();
 
             if let Ok(dir) = handle.path().app_data_dir() {
-                logs::init(dir.join("logs").join("trans.log"));
+                logs::init(dir.join("logs").join("lemma.log"));
             }
+            migrate_legacy_data();
+
             logs::line(format!(
                 "startup setup-phase {:.1}ms",
                 app.state::<Perf>().startup_ms()
@@ -84,6 +116,6 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("Trans 启动失败");
+        .expect("Lemma 启动失败");
 }
 pub mod cli;

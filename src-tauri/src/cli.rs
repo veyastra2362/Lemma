@@ -14,18 +14,18 @@ use crate::core::paths;
 pub fn print_help() {
     println!(
         "\
-Trans 命令行
+Lemma 命令行
 
-  trans.exe                       启动应用（托盘常驻）
-  trans.exe --probe               取词探针：探测光标处的 UIA 能力
+  lemma.exe                       启动应用（托盘常驻）
+  lemma.exe --probe               取词探针：探测光标处的 UIA 能力
       --point 800,400               指定屏幕坐标
       --delay 1500                  等待毫秒数（切完窗口让目标应用稳住）
-  trans.exe --import-dict [csv]   把 ECDICT CSV 导入 redb 词库，缺省 data/ecdict.csv
-  trans.exe --lookup <word>       查一个词，并报告耗时
+  lemma.exe --import-dict [csv]   把 ECDICT CSV 导入 redb 词库，缺省 data/ecdict.csv
+  lemma.exe --lookup <word>       查一个词，并报告耗时
       --repeat 1000                 重复查询次数（默认 1），用于压测
-  trans.exe --help                显示本帮助
+  lemma.exe --help                显示本帮助
 
-词库位置：%APPDATA%\\dev.lunar.trans\\dict.redb"
+词库位置：%APPDATA%\\dev.lunar.lemma\\dict.redb"
     );
 }
 
@@ -107,7 +107,7 @@ fn import_dict(args: &[String]) {
     let store = match DictStore::open(&out) {
         Ok(store) => store,
         Err(error) => {
-            eprintln!("打开词库失败：{error}");
+            eprintln!("打开词库失败：{error}（应用正在运行时词库被独占，请先退出托盘里的 Lemma）");
             return;
         }
     };
@@ -181,7 +181,7 @@ fn import_dict(args: &[String]) {
 
 fn lookup(args: &[String]) {
     let Some(word) = args.get(1) else {
-        eprintln!("用法：trans.exe --lookup <word> [--repeat N]");
+        eprintln!("用法：lemma.exe --lookup <word> [--repeat N]");
         return;
     };
     let repeat: u32 = args
@@ -203,7 +203,7 @@ fn lookup(args: &[String]) {
     let store = match DictStore::open(&path) {
         Ok(store) => store,
         Err(error) => {
-            eprintln!("打开词库失败：{error}");
+            eprintln!("打开词库失败：{error}（应用正在运行时词库被独占，请先退出托盘里的 Lemma）");
             return;
         }
     };

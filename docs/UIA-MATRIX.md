@@ -1,19 +1,19 @@
 # 取词能力矩阵（实测）
 
-> 这份文件只记录**实测结果**，不写「理论上应该」。方法：`trans.exe --probe`。
+> 这份文件只记录**实测结果**，不写「理论上应该」。方法：`lemma.exe --probe`。
 > 环境：Windows 11 / Chrome 156.0.8078.80 / Rust 1.99.1。
 
 ## 怎么自己测
 
 ```powershell
 # 把鼠标停在目标应用的文字上，然后：
-.\src-tauri\target\release\trans.exe --probe
+.\src-tauri\target\release\lemma.exe --probe
 
 # 或指定屏幕坐标 / 延迟（切窗口后让目标应用稳住）
-.\src-tauri\target\release\trans.exe --probe --point 800,400 --delay 800
+.\src-tauri\target\release\lemma.exe --probe --point 800,400 --delay 800
 ```
 
-输出同时落到 `%APPDATA%\dev.lunar.trans\probe\last.json`（机器可读，可攒成矩阵）
+输出同时落到 `%APPDATA%\dev.lunar.lemma\probe\last.json`（机器可读，可攒成矩阵）
 和 `last.txt`（人读）。JSON 里的 `patterns` 字段就是这个控件支持的 UIA Pattern 清单。
 
 ## 实测结果

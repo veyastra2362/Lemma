@@ -78,7 +78,8 @@ impl DictStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("建目录失败：{e}"))?;
         }
-        let db = Database::create(path).map_err(|e| format!("打开词库失败：{e}"))?;
+        // 不在这里加"打开词库失败："前缀——调用方会补，否则会叠成两遍。
+        let db = Database::create(path).map_err(|e| e.to_string())?;
         Ok(Self {
             db,
             path: path.to_path_buf(),
@@ -250,7 +251,7 @@ mod tests {
     use super::*;
 
     fn temp_db(name: &str) -> DictStore {
-        let dir = std::env::temp_dir().join(format!("trans-dict-{name}"));
+        let dir = std::env::temp_dir().join(format!("lemma-dict-{name}"));
         let _ = std::fs::remove_dir_all(&dir);
         DictStore::open(&dir.join("dict.redb")).expect("建库失败")
     }

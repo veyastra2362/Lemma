@@ -12,12 +12,12 @@ pub fn install(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let hud_item = MenuItem::with_id(app, "hud", "显示浮层 (Alt+Q)", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let quit_item = MenuItem::with_id(app, "quit", "退出 Trans", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "退出 Lemma", true, None::<&str>)?;
 
     let menu = Menu::with_items(app, &[&hud_item, &settings_item, &separator, &quit_item])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("Trans — Alt+Q 呼出")
+        .tooltip("Lemma — 双击 Ctrl 呼出")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {

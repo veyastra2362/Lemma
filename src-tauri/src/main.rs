@@ -3,9 +3,9 @@
 
 fn main() {
     // CLI 子命令（探针 / 词库导入 / 查词）不启动 GUI，跑完即退。
-    if trans_lib::cli::try_run() {
+    if lemma_lib::cli::try_run() {
         return;
     }
 
-    trans_lib::run()
+    lemma_lib::run()
 }

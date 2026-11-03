@@ -14,7 +14,7 @@
 
 .EXAMPLE
     pwsh -File scripts/perf-baseline.ps1
-    pwsh -File scripts/perf-baseline.ps1 -Exe src-tauri/target/debug/trans.exe
+    pwsh -File scripts/perf-baseline.ps1 -Exe src-tauri/target/debug/lemma.exe
 #>
 [CmdletBinding()]
 param(
@@ -26,7 +26,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$identifier = 'dev.lunar.trans'
+$identifier = 'dev.lunar.lemma'
 
 function Resolve-Exe {
     param([string] $candidate)
@@ -36,17 +36,17 @@ function Resolve-Exe {
         return (Resolve-Path $candidate).Path
     }
 
-    foreach ($relative in @('src-tauri/target/release/trans.exe', 'src-tauri/target/debug/trans.exe')) {
+    foreach ($relative in @('src-tauri/target/release/lemma.exe', 'src-tauri/target/debug/lemma.exe')) {
         $path = Join-Path $repoRoot $relative
         if (Test-Path $path) { return (Resolve-Path $path).Path }
     }
-    throw "没有找到 trans.exe，请先执行：cd src-tauri; cargo build --release"
+    throw "没有找到 lemma.exe，请先执行：cd src-tauri; cargo build --release"
 }
 
 function Resolve-LogPath {
     $candidates = @(
-        (Join-Path $env:APPDATA "$identifier/logs/trans.log"),
-        (Join-Path $env:LOCALAPPDATA "$identifier/logs/trans.log")
+        (Join-Path $env:APPDATA "$identifier/logs/lemma.log"),
+        (Join-Path $env:LOCALAPPDATA "$identifier/logs/lemma.log")
     )
     foreach ($path in $candidates) {
         if (Test-Path $path) { return $path }
@@ -102,7 +102,7 @@ Write-Host "可执行文件 : $exePath"
 Write-Host "日志文件   : $logPath"
 
 # 掐掉上一轮实例，保证是真正的冷启动
-Get-Process -Name trans -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name lemma -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 400
 
 New-Item -ItemType Directory -Force (Split-Path -Parent $logPath) | Out-Null
@@ -164,4 +164,4 @@ $result | ConvertTo-Json -Depth 4 | Set-Content -Path $outFile -Encoding utf8
 Write-Host ''
 Write-Host "已写入 $outFile" -ForegroundColor Green
 
-Get-Process -Name trans -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name lemma -ErrorAction SilentlyContinue | Stop-Process -Force

@@ -1,9 +1,9 @@
 {
-  "name": "trans",
+  "name": "lemma",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Trans — 高频深度阅读的轻量桌面辅助系统",
+  "description": "Lemma — 高频深度阅读的轻量桌面辅助系统",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

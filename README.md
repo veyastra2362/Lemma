@@ -1,112 +1,169 @@
-# Trans
+# Lemma · 词元
 
-高频深度阅读场景下的轻量桌面辅助系统：**全局划词 → 无限下探查词 → 端侧 OCR / 翻译 → 原地回填**。
+> 高频深度阅读的轻量桌面辅助系统：**划词 → 沿词下探 → 回到原文**，全程不离开当前页面。
 
-> 当前状态：**M0（骨架）已落地**。单例常驻 + 托盘 + 全局热键 + HUD 预热 + 呼出延迟基线 + CI 门禁。
-> 详细路线图见 [`docs/PLAN.md`](docs/PLAN.md)。
+**当前状态：M2 已完成。** 双击 Ctrl 取词、redb 离线词库（77 万条 / 2µs 查询）、卡片栈无限下探、可配置 HUD。
+翻译、OCR、TTS、原地回填在 M3–M6。
 
 ---
 
-## 技术栈
+## 它解决什么问题
 
-| 层 | 选型 |
+读英文长文时，查词这件事被切成了三段割裂的动作：**选中 → 切到词典 → 切回来**。切走再切回，读进去的思路就断了。
+
+Lemma 把这三段压成一步：选中一个词（或把鼠标停在词上），双击 Ctrl，一张卡片贴在光标旁边给出释义；点释义里的任意词继续下探，按 Esc 一层层退回来。**全程没有第二个窗口抢焦点，也没有剪贴板污染。**
+
+名字取自语言学里的 *lemma*（词元）：一个词所有屈折形式的词典原形。这也正是它的骨架——你点到的 `thresholds`、`went`，最终都归到一个词元上，再从词元继续走。
+
+## 现在能做什么
+
+| 能力 | 状态 |
 | --- | --- |
-| 桌面壳 | Tauri v2（单实例 / 托盘 / 全局热键 / 多窗口预热） |
-| 前端 | React 19 · TypeScript · Vite · Tailwind v4 · zustand |
-| 核心 | Rust 2024，`core/`（跨平台逻辑）+ `platform/`（OS 契约与后端） |
-| 端侧 AI | ONNX Runtime（PP-OCRv5 / Kokoro）— M4 / M5 |
-| 词库 | redb + 内存索引 — M2 |
+| 双击 Ctrl 呼出（或自定义热键，可录制） | ✅ |
+| 三档取词：UIA 选区 → UIA 光标词 → 剪贴板兜底 | ✅ |
+| 离线词库：ECDICT 77 万条，redb 存储，**2 µs/次** | ✅ |
+| 卡片栈无限下探 + 面包屑退层（Esc 逐层返回） | ✅ |
+| HUD 按内容自适应高度（可设上限）、卡片区块可开关 | ✅ |
+| 取词自动清洗首尾标点（`当前进度：` → `当前进度`） | ✅ |
+| 整句翻译 / 双栏对照 | ⏳ M3 |
+| 端侧 OCR（PP-OCRv5） | ⏳ M4 |
+| 离线朗读（Kokoro） | ⏳ M5 |
+| 标注层 / 原地回填 | ⏳ M6 |
 
----
+## 快速开始
 
-## 开发环境
-
-- Rust 1.85+（edition 2024），Windows 需 MSVC 工具链
-- Node.js 20+ / pnpm 11+
-- Windows 10 2004+ / 11（自带 WebView2）
+需要 **Rust 1.85+**（Windows 需 MSVC 工具链）、**Node 20+ / pnpm 11+**、Windows 10 2004+ / 11。
 
 ```powershell
 pnpm install
-pnpm tauri dev      # 启动后按 Alt+Q 呼出 HUD；托盘图标右键有菜单
+
+# 1) 下载 ECDICT 词库（63 MB，不进仓库）
+New-Item -ItemType Directory -Force data | Out-Null
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv" -OutFile data/ecdict.csv
+
+# 2) 构建 release（第一次会顺带编译依赖、导入词库前需先构建出 exe）
+pnpm tauri build --no-bundle
+
+# 3) 导入词库 → 77 万条 / 约 129 MB / 约 3 秒
+.\src-tauri\target\release\lemma.exe --import-dict data\ecdict.csv
+
+# 4) 启动，然后双击 Ctrl
+.\src-tauri\target\release\lemma.exe
 ```
 
-### 质量门禁
+不想装词库也能跑：没有词库时 HUD 只显示取到的原文与句子，不显示释义。
+
+### 命令行
 
 ```powershell
-pnpm typecheck                              # tsc --noEmit
-pnpm test                                   # vitest
-cd src-tauri
-cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings   # 零 warning
-cargo test
+lemma.exe --probe                    # 取词探针：探测光标处的 UIA 能力（见 docs/UIA-MATRIX.md）
+lemma.exe --probe --point 800,400    # 探测指定屏幕坐标
+lemma.exe --import-dict <csv>        # 导入 ECDICT
+lemma.exe --lookup threshold --repeat 1000   # 查词并压测
+lemma.exe --help
 ```
-
----
-
-## 架构纪律
-
-```
-src-tauri/src/
-├── lib.rs          组合根
-├── commands.rs     IPC 适配层（只转换与转发，命令名是前端契约）
-├── core/           跨平台业务逻辑，禁止 cfg(target_os) 与原生 API
-└── platform/       OS 契约与后端
-    ├── placement.rs  纯几何（可在任意平台跑单测）
-    ├── window.rs     WindowOps 契约
-    └── windows/      Win32 / UIA 实现
-```
-
-- `core/` 只能通过 `crate::platform` 导出的函数与类型触达操作系统；
-- `cfg(target_os)` 只允许出现在 `platform/mod.rs` 与各后端内部；
-- 新增一项 OS 能力 = 加一个契约函数，所有后端都要实现。
-
-这三条会在 CI 里由 `scripts/check-architecture.ps1` 守住。
-
----
-
-## 安全边界
-
-- **只装一个键盘钩子，且是只读的**：`WH_KEYBOARD_LL`，仅用于识别「双击 Ctrl」与
-  「用户按了别的键」（后者用来复位双击状态）。回调里只把信号塞进 channel 然后
-  `CallNextHookEx`，**不吞键、不改键、不阻塞、不记录按键内容**。
-  原因：`RegisterHotKey` 只能注册组合键，表达不了「双击」这种时序动作。
-- **不注入 DLL、不打补丁、不 hook 窗口消息**。
-- **不模拟键鼠**（M6 的「回填」兜底路径除外，且必须严格保存/恢复剪贴板全格式）。
-
-这样能避开绝大多数杀软 / EDR 误报，也避开模拟输入的合规灰区。
-
----
 
 ## 呼出方式
 
-两种，可在设置里切换，立即生效并持久化到 `%APPDATA%\dev.lunar.trans\settings.json`：
+默认 **双击 Ctrl**：不占组合键、不和输入法冲突。320 ms 窗口，长按 Ctrl 不算，中间按过别的键会复位（所以 `Ctrl+C` 之后紧接着按 Ctrl 不会误触）。
+
+也可以在设置里改：
 
 | 方式 | 说明 |
 | --- | --- |
-| **双击 Ctrl**（默认） | 不占组合键、不和输入法冲突。320ms 窗口，长按 Ctrl 不算，中间按过别的键会复位 |
-| **自定义热键** | 设置页点「录制」，按下组合键即可。注册失败（被别的软件占用）会**回滚到旧配置**并提示原因 |
+| 双击 Ctrl | 默认。需要装一个**只读**键盘钩子，见下方安全边界 |
+| 自定义热键 | 设置页点「录制」按组合键。注册失败（被别的软件占用）会回滚旧配置并提示原因 |
 
----
+## 取词档位（为什么不是所有软件都一样）
 
-## 性能口径（写清楚，免得被追问）
+| 档 | 机制 | 覆盖 | 代价 |
+| --- | --- | --- | --- |
+| T1 | `TextPattern.GetSelection()`（焦点元素） | 原生 Win32 / WPF / WinForms / WinUI / **Chrome** | 无。实测 Chrome 选区 **8 ms** |
+| T0 | `RangeFromPoint` + `WordUnit` | 原生控件好用；**Chromium 上不稳定** | 无 |
+| T2 | 模拟 Ctrl+C 读剪贴板 | 几乎一切可复制的软件（Firefox / Electron / PDF） | 污染剪贴板、多几十毫秒 |
 
-性能数字必须带口径，否则没有意义。完整测量方法与明细见 [`docs/PERF.md`](docs/PERF.md)。
+实测结论写在 [`docs/UIA-MATRIX.md`](docs/UIA-MATRIX.md)：**在浏览器里"选中再双击"是最快的路径（8 ms，零副作用）**；悬停取词只在原生应用里可靠。所以默认取词模式是「自动（选区优先，其次光标词）」。
 
-### M0 实测（Windows 11 / Rust 1.99.1 / tauri 2.11.6）
+## 性能
+
+口径与完整数据见 [`docs/PERF.md`](docs/PERF.md)。
 
 | 指标 | 实测 |
 | --- | --- |
-| 冷启动到托盘就绪 | 550 – 575 ms |
+| 冷启动到托盘就绪 | 550 – 780 ms |
 | **Rust 主进程**私有内存 | **6.3 MB**（工作集 27 – 29 MB） |
 | 整个进程树私有内存 | **166 MB**（7 个进程，其中 6 个是 WebView2） |
-| HUD 首帧（首次呼出） | 22.3 ms |
-| HUD 首帧（热态） | 4.8 – 5.8 ms |
+| HUD 首帧（热键 → 首帧） | 15 – 27 ms |
+| 词库查询 | 2.0 µs/次（77 万条） |
+| NSIS 安装包 | ≈ 1.2 MiB（不含词库与模型） |
 
-**「常驻 30–60 MB」只能指 Rust 主进程**。整个进程树私有内存约 166 MB，
-96% 是 WebView2 的浏览器/渲染/GPU/网络进程——这是 Tauri（以及任何 WebView 方案）的底噪。
-对外报数字必须写清是哪一个，后续所有里程碑的模型权重也是内存大头，
-所以计划里坚持「模型不常驻 + 空闲卸载」。
+> 「常驻 30–60 MB」只能指 Rust 主进程。整个进程树私有内存约 166 MB，96% 是 WebView2 的浏览器/渲染/GPU 进程——这是任何 WebView 方案的底噪。报数字必须带口径。
 
-参考实现 `LunarFlow42/TransPortal` 的实测数据同样值得对照：900×180 中英混排 OCR
-首次 **805 ms**、热态中位 **272 ms**，无界面探针峰值工作集 **79.4 MiB**。
-即最初设想的「50 ms / 45 MB」并未达成。本项目刻意不沿用那些数字。
+## 安全边界
+
+- **只装一个键盘钩子，且是只读的**：`WH_KEYBOARD_LL` 仅用于识别「双击 Ctrl」与「用户按了别的键」。
+  回调里只把信号塞进 channel 然后 `CallNextHookEx`——**不吞键、不改键、不阻塞、不记录按键内容**。
+  原因：`RegisterHotKey` 只能注册组合键，表达不了「双击」这种时序动作。
+- **不注入 DLL、不打补丁、不 hook 窗口消息**。
+- **不模拟键鼠**（M6「回填」的兜底路径除外，且必须严格保存/恢复剪贴板全格式）。
+- 词库、模型、原始语料都不进仓库；网络访问只在构建期下载资源。
+
+## 架构
+
+```
+src-tauri/src/
+├── lib.rs          组合根（窗口、托盘、迁移、命令注册）
+├── cli.rs          命令行：探针 / 词库导入 / 查词压测
+├── commands.rs     IPC 适配层（命令名是前端契约）
+├── core/           跨平台业务逻辑，禁止 cfg(target_os) 与原生 API
+│   ├── selection.rs  取词编排：三档降级（纯逻辑可单测）
+│   ├── dict.rs       redb 词库：归一化 / 回退 / 前缀
+│   ├── text.rs       句子切分、词边界清洗
+│   ├── double_tap.rs 双击 Ctrl 时序判定
+│   ├── settings.rs   设置（新增字段必须 serde(default)）
+│   └── shell.rs      HUD 生命周期、预热、尺寸、定位
+└── platform/       OS 契约与后端（编译期全平台可检查）
+    ├── keyboard.rs / clipboard.rs / uia.rs / window.rs / placement.rs   契约
+    └── windows/     UIA（STA 常驻线程）、键盘钩子、剪贴板、DPI
+```
+
+纪律由 `scripts/check-architecture.ps1` 在 CI 里守住。
+
+## 开发
+
+```powershell
+pnpm typecheck                                   # tsc --noEmit
+pnpm test                                        # vitest
+pnpm verify-notes                                # 决策笔记校验（见 AGENTS.md）
+
+cd src-tauri
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings        # 零 warning
+cargo test
+```
+
+约定与踩过的坑见 [`AGENTS.md`](AGENTS.md)；重要改动的**理由与取舍**见 [`.agents/notes/`](.agents/notes/)。
+
+## 路线图
+
+| 里程碑 | 内容 |
+| --- | --- |
+| M0 ✅ | 骨架 · 单例 · 托盘 · HUD 预热 · 性能基线 |
+| M1 ✅ | 三档取词 + 上下文 + 探针 |
+| M2 ✅ | redb 词库 + 卡片栈下探 |
+| M3 | 翻译分层路由（本地词典 → 在线兜底）+ 双栏对照 |
+| M4 | PP-OCRv5 端侧 OCR + 原图覆盖 |
+| M5 | Kokoro 离线朗读（流式分句 + 跟读高亮） |
+| M6 | 标注层 / 原地回填（含撤销快照） |
+
+## 已知限制
+
+- **中文不做分词**：UIA 的 `WordUnit` 对中文只返回单字或按标点切开的片段，中文用户现在只能查到整段（多为"未收录"）。M2.1 会接中文词典时一起解决。
+- **Firefox 没有 TextPattern**，只能走剪贴板兜底。
+- **Chromium 的悬停取词不稳定**，浏览器请用「选中再双击」。
+- **命令行不能和应用同时打开词库**：redb 是独占锁，GUI 运行时 `--lookup` 会报
+  `Database already open`。要用 CLI 查词请先退出托盘里的 Lemma。
+
+## 许可
+
+[MIT](LICENSE)。词库数据来自 [ECDICT](https://github.com/skywind3000/ECDICT)，遵循其自身许可。

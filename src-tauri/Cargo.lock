@@ -2040,6 +2040,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "lemma"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "postcard",
+ "redb",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-store",
+ "thiserror 2.0.21",
+ "unicode-normalization",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4245,27 +4266,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "trans"
-version = "0.1.0"
-dependencies = [
- "csv",
- "postcard",
- "redb",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-store",
- "thiserror 2.0.21",
- "unicode-normalization",
- "windows 0.62.2",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Trans 三个窗口的默认权限：窗口生命周期由 Rust 侧主导，前端只做查询与最小控制。",
+  "description": "Lemma 三个窗口的默认权限：窗口生命周期由 Rust 侧主导，前端只做查询与最小控制。",
   "windows": ["shell", "settings", "ocr-region"],
   "permissions": [
     "core:default",

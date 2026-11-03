@@ -1,5 +1,5 @@
 # ============================================================
-# Trans · .gitignore
+# Lemma · .gitignore
 #
 # 原则：
 #   1. 能由命令重新生成的，一律不进仓库（依赖、构建产物、模型、词库）。
@@ -38,7 +38,7 @@ src-tauri/resources/tts/downloads/
 *.fst
 
 # ---------- 本地配置 / 运行期数据 ----------
-# 应用自己的设置、日志、缓存都写在 %APPDATA%\dev.lunar.trans，不会落到仓库；
+# 应用自己的设置、日志、缓存都写在 %APPDATA%\dev.lunar.lemma，不会落到仓库；
 # 这里挡的是开发时手动拷出来的副本。
 src-tauri/settings.local.json
 *.log

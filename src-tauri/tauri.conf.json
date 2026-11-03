@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Trans",
+  "productName": "Lemma",
   "version": "0.1.0",
-  "identifier": "dev.lunar.trans",
+  "identifier": "dev.lunar.lemma",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "shell",
-        "title": "Trans",
+        "title": "Lemma",
         "url": "index.html#/shell",
         "width": 420,
         "height": 420,
@@ -33,7 +33,7 @@
       {
         "create": false,
         "label": "settings",
-        "title": "Trans 设置",
+        "title": "Lemma 设置",
         "url": "index.html#/settings",
         "width": 720,
         "height": 580,
@@ -52,7 +52,7 @@
       {
         "create": false,
         "label": "ocr-region",
-        "title": "Trans 框选",
+        "title": "Lemma 框选",
         "url": "index.html#/ocr-region",
         "decorations": false,
         "transparent": true,

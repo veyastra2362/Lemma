@@ -85,7 +85,7 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 - 模拟输入只允许出现在 M6 的「回填」兜底路径，且必须严格保存/恢复剪贴板全格式。
 - 不要提交密钥或 API key。
 - 不要为了方便而放宽 CSP。
-- 不要自动 `git push`。
+- 不要自动 `git push`；只有用户在当次对话里**明确要求推送**时才推（理由见 `.agents/notes/implemented/architecture/2026-11-03-rename-to-lemma.md` 的 Consequences）。
 - 不要引用 / 拷贝 `LunarFlow42/TransPortal` 的源码：它没有 LICENSE 文件，
   只作为架构与踩坑的参考，实现自己写。
 

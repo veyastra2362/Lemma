@@ -1,14 +1,14 @@
 [package]
-name = "trans"
+name = "lemma"
 version = "0.1.0"
-description = "Trans - 高频深度阅读的轻量桌面辅助系统"
-authors = ["Trans"]
+description = "Lemma - 高频深度阅读的轻量桌面辅助系统"
+authors = ["Lemma contributors"]
 edition = "2024"
 
 
 [lib]
 # lib/bin 同名在 Windows 上会冲突，见 rust-lang/cargo#8519
-name = "trans_lib"
+name = "lemma_lib"
 crate-type = ["rlib"]
 
 [build-dependencies]

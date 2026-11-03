@@ -7,7 +7,7 @@
 | 指标 | 定义 | 为什么容易骗人 |
 | --- | --- | --- |
 | `cold_start_ms` | 进程启动 → 托盘就绪，取自应用自己写的 `startup tray-ready Nms` 日志 | 不含安装器/系统预热的差异；机器冷热差异可达 50% |
-| `rss_main_mb` | `trans.exe` 主进程工作集 | **只算主进程**，这是"30–60MB"这类说法的常见来源 |
+| `rss_main_mb` | `lemma.exe` 主进程工作集 | **只算主进程**，这是"30–60MB"这类说法的常见来源 |
 | `rss_tree_mb` | 主进程 + 全部后代进程的工作集之和 | 共享页会被**重复计入**，因此偏高 |
 | `private_tree_mb` | 主进程 + 后代进程的私有提交之和 | 最接近"这块应用真占了多少"，推荐对外报这个 |
 | `hud_first_paint_ms` | 热键 → 前端 `requestAnimationFrame` 里回报首帧 | Rust 侧 `show()` 返回只代表窗口系统收到请求，离出图还差一次合成 |
@@ -36,7 +36,7 @@ pwsh -File scripts/perf-baseline.ps1
 | 主进程私有提交 | **6.3 MB** |
 | 进程树工作集之和 | **348 – 351 MB** |
 | 进程树私有提交之和 | **166 MB** |
-| 进程数 | 7（1 × trans.exe + 6 × msedgewebview2.exe） |
+| 进程数 | 7（1 × lemma.exe + 6 × msedgewebview2.exe） |
 | HUD 首帧（首次呼出） | **22.3 ms** |
 | HUD 首帧（热态） | **4.8 – 5.8 ms** |
 
@@ -49,7 +49,7 @@ pwsh -File scripts/perf-baseline.ps1
 | msedgewebview2.exe | 60.6 MB | 24.7 MB |
 | msedgewebview2.exe | 37.0 MB | 11.7 MB |
 | msedgewebview2.exe | 20.9 MB | 7.8 MB |
-| trans.exe | 29.3 MB | 6.3 MB |
+| lemma.exe | 29.3 MB | 6.3 MB |
 | msedgewebview2.exe | 10.3 MB | 2.5 MB |
 
 ### 3.2 由此得到的两条结论
