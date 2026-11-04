@@ -116,7 +116,8 @@ function CardView({
               ` · ${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
           </p>
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            {onSpeak && /[\u4e00-\u9fff]/.test(card.original ?? "") && (
+            {/* 朗读不再只认中文：英文（CMU 词典）也能读，只要有原文就给入口 */}
+            {onSpeak && (card.original ?? "").trim().length > 0 && (
               <button
                 type="button"
                 onClick={() => onSpeak(card.original as string)}

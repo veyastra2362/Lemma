@@ -267,41 +267,63 @@ export function SettingsView() {
           <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
             {t("settingsSectionTrigger")}
           </h2>
-          <div className="space-y-1.5">
-            <Radio
-              active={isDoubleControl}
-              label={t("settingsTriggerDoubleControl")}
-              hint={t("settingsTriggerDoubleControlHint")}
-              onClick={() => apply({ trigger: "doubleControl" })}
-            />
-            <div
-              className={`rounded-lg border px-3 py-2 ${
-                !isDoubleControl
-                  ? "border-[var(--hud-accent)] bg-white/5"
-                  : "border-white/10"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-[13px]">{t("settingsTriggerHotkey")}</span>
+          {/*
+            合成一张卡片：默认就是「双击 Ctrl」，录制热键只是可选的覆盖。
+            之前是两个互斥的选项卡，看起来像"必须二选一"，而绝大多数人只用默认那个。
+          */}
+          <div
+            className={`rounded-lg border px-3 py-2 ${
+              isDoubleControl
+                ? "border-[var(--hud-accent)] bg-white/5"
+                : "border-white/10"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  isDoubleControl ? "bg-[var(--hud-accent)]" : "bg-white/25"
+                }`}
+              />
+              <span className="text-[13px]">{t("settingsTriggerDoubleControl")}</span>
+              <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)]">
+                {isDoubleControl ? t("settingsTriggerDefault") : t("settingsTriggerHotkeyActive")}
+              </span>
+              {/* 默认模式下左边已经写了「双击 Ctrl」，这里不再重复；只在改用热键时显示当前键位 */}
+              {!isDoubleControl && (
                 <span className="ml-auto font-mono text-[12px] text-[var(--hud-accent)]">
                   {settings?.hotkey ?? "—"}
                 </span>
+              )}
+              {isDoubleControl && <span className="ml-auto" />}
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setRecordingTarget(recordingTarget === "hud" ? null : "hud");
+                }}
+                className="shrink-0 rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
+              >
+                {recordingTarget === "hud"
+                  ? t("settingsHotkeyRecording")
+                  : t("settingsHotkeyRecord")}
+              </button>
+              {!isDoubleControl && (
                 <button
                   type="button"
                   onClick={() => {
                     setError(null);
-                    setRecordingTarget(recordingTarget === "hud" ? null : "hud");
+                    apply({ trigger: "doubleControl" });
                   }}
-                  className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
+                  className="shrink-0 rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
                 >
-                  {recordingTarget === "hud"
-                    ? t("settingsHotkeyRecording")
-                    : t("settingsHotkeyRecord")}
+                  {t("settingsTriggerResetDefault")}
                 </button>
-              </div>
-              <div className="mt-1 text-[11px] text-[var(--hud-muted)]">
-                {t("settingsHotkeyRule")}
-              </div>
+              )}
+            </div>
+            <div className="mt-1 pl-3.5 text-[11px] leading-relaxed text-[var(--hud-muted)]">
+              {isDoubleControl
+                ? t("settingsTriggerDoubleControlHint")
+                : t("settingsHotkeyRule")}
             </div>
           </div>
         </section>
