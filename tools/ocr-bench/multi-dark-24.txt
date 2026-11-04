@@ -1,0 +1,3 @@
+Reading flow matters more than lookup speed.
+A lemma is the canonical form of a word.
+It keeps every inflection pointing back to it.

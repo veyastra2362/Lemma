@@ -37,7 +37,11 @@ pub struct DetOutput {
 /// det 二值化阈值。
 const DET_THRESHOLD: f32 = 0.3;
 /// DB 的 unclip 比例。
-const UNCLIP_RATIO: f32 = 1.5;
+///
+/// **3.0 是基准集标定出来的**（见 `docs/OCR-CALIBRATION.md`）：
+/// 1.5 平均 CER 0.136、2.5 是 0.008、3.0 是 **0.005**、4.0 回升到 0.009。
+/// 偏小会把字形的上下沿切掉，偏大会把相邻行框进来。
+const UNCLIP_RATIO: f32 = 3.0;
 /// 小于这么多像素的连通域当噪声丢掉。
 const MIN_BLOB_AREA: usize = 12;
 
@@ -72,6 +76,36 @@ pub fn models_ready() -> bool {
 ///
 /// `pixels` 是紧密排列的 RGB 数据（长度 = width × height × 3）。
 pub fn recognize(pixels: &[u8], width: u32, height: u32) -> Result<Vec<TextBlock>, String> {
+    recognize_scaled(pixels, width, height, 1.0)
+}
+
+/// 同 `recognize`，但会先按 `scale` 放大原图再识别。
+///
+/// 为什么需要：小字号（12–14 px）的文本框抠出来只有十来个像素高，放大到 rec 的 48 px
+/// 是 3–4 倍插值，模型看到的已经糊了。先整体放大再检测，等价于"看更大的图"。
+pub fn recognize_scaled(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    scale: f32,
+) -> Result<Vec<TextBlock>, String> {
+    if scale > 1.01 {
+        let image = image::RgbImage::from_raw(width, height, pixels.to_vec())
+            .ok_or_else(|| "图像数据长度不匹配".to_string())?;
+        let new_w = ((width as f32) * scale).round() as u32;
+        let new_h = ((height as f32) * scale).round() as u32;
+        let resized = image::imageops::resize(
+            &image,
+            new_w.max(1),
+            new_h.max(1),
+            image::imageops::FilterType::Lanczos3,
+        );
+        return recognize_inner(resized.as_raw(), new_w, new_h);
+    }
+    recognize_inner(pixels, width, height)
+}
+
+fn recognize_inner(pixels: &[u8], width: u32, height: u32) -> Result<Vec<TextBlock>, String> {
     if width == 0 || height == 0 {
         return Ok(Vec::new());
     }
@@ -82,6 +116,16 @@ pub fn recognize(pixels: &[u8], width: u32, height: u32) -> Result<Vec<TextBlock
             pixels.len()
         ));
     }
+
+    // 标定旋钮：默认值是探针/基准集标定出来的，允许环境变量覆盖以便扫参数。
+    let threshold = std::env::var("LEMMA_OCR_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DET_THRESHOLD);
+    let unclip_ratio = std::env::var("LEMMA_OCR_UNCLIP")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(UNCLIP_RATIO);
 
     let det_model = model_path("det.onnx")?;
     let rec_model = model_path("rec.onnx")?;
@@ -97,8 +141,8 @@ pub fn recognize(pixels: &[u8], width: u32, height: u32) -> Result<Vec<TextBlock
         height: output.height,
         scale_x: output.scale_x,
         scale_y: output.scale_y,
-        threshold: DET_THRESHOLD,
-        unclip_ratio: UNCLIP_RATIO,
+        threshold,
+        unclip_ratio,
         min_area: MIN_BLOB_AREA,
     });
 
@@ -124,6 +168,42 @@ pub fn recognize(pixels: &[u8], width: u32, height: u32) -> Result<Vec<TextBlock
     ));
 
     Ok(blocks)
+}
+
+/// 编辑距离（Levenshtein），用来算字符错误率 CER。
+///
+/// 按字符（不是字节）比较——中文一个字算一个。
+pub fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    if a.is_empty() {
+        return b.len();
+    }
+    if b.is_empty() {
+        return a.len();
+    }
+
+    let mut previous: Vec<usize> = (0..=b.len()).collect();
+    let mut current = vec![0usize; b.len() + 1];
+
+    for (i, ca) in a.iter().enumerate() {
+        current[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != cb);
+            current[j + 1] = (previous[j] + cost)
+                .min(previous[j + 1] + 1)
+                .min(current[j] + 1);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+
+    previous[b.len()]
+}
+
+/// 字符错误率：编辑距离 / 参考答案长度。0.0 表示完全正确。
+pub fn char_error_rate(reference: &str, hypothesis: &str) -> f64 {
+    let length = reference.chars().count().max(1);
+    edit_distance(reference, hypothesis) as f64 / length as f64
 }
 
 /// 把识别结果拼成纯文本（按阅读顺序，行间换行）。

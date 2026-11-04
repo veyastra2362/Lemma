@@ -12,10 +12,20 @@ use super::geometry::{Quad, crop_quad};
 
 /// rec 输入高度（PP-OCR 固定 48）。
 pub const REC_HEIGHT: u32 = 48;
-/// rec 输入宽度上限。实测 640 明显优于 320 与 1920（见 docs/ONNX-PROBE.md）。
-pub const REC_MAX_WIDTH: u32 = 640;
-/// 超过这个比例的行会被切段识别，而不是压缩。
-const SEGMENT_ASPECT: f32 = 640.0 / 48.0;
+/// rec 输入宽度上限。
+///
+/// 640 是探针阶段的值；基准集标定后改成 **960**：宽行不再切段，
+/// 切段会在边界把字切断（`canolnical`、`poointing` 那类重复/残字）。
+/// 见 `docs/OCR-CALIBRATION.md`。
+pub const REC_MAX_WIDTH: u32 = 960;
+
+/// 单段输入宽度上限（可用 `LEMMA_OCR_REC_WIDTH` 覆盖以便标定）。
+fn max_width() -> u32 {
+    std::env::var("LEMMA_OCR_REC_WIDTH")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(REC_MAX_WIDTH)
+}
 
 static SESSION: OnceLock<Mutex<Session>> = OnceLock::new();
 static CHARSET: OnceLock<Vec<char>> = OnceLock::new();
@@ -79,7 +89,8 @@ pub fn recognize(
     let left_len = ((quad[3].x - quad[0].x).powi(2) + (quad[3].y - quad[0].y).powi(2)).sqrt();
     let aspect = top_len / left_len.max(1.0);
     // 目标：每段缩放到高 48 后宽度不超过 REC_MAX_WIDTH
-    let segments = (aspect / SEGMENT_ASPECT).ceil().max(1.0) as usize;
+    let segment_aspect = max_width() as f32 / REC_HEIGHT as f32;
+    let segments = (aspect / segment_aspect).ceil().max(1.0) as usize;
     if std::env::var("LEMMA_OCR_DEBUG").is_ok() {
         eprintln!("[ocr] 行宽 {top_len:.0} 高 {left_len:.0} 宽高比 {aspect:.1} → 切 {segments} 段");
     }
@@ -121,8 +132,10 @@ fn recognize_quad(
     height: u32,
     quad: &Quad,
 ) -> Result<String, String> {
+    // 注意：曾试过横向补 1.5% 余量，实测**略微变差**（CER 0.000→0.011），已回退。
+    // 行尾丢字的原因在源图：文字被画布边缘裁掉了，不是框不够宽。
     let Some((crop, crop_w, crop_h)) =
-        crop_quad(pixels, width, height, quad, REC_HEIGHT, REC_MAX_WIDTH)
+        crop_quad(pixels, width, height, quad, REC_HEIGHT, max_width())
     else {
         return Ok(String::new());
     };

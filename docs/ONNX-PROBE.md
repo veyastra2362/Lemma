@@ -152,6 +152,12 @@ It keeps every inflection poointing back to one shap   ← 边界残字 + 末字
 而第 2 行是 0 帧——同样是 6625 类、同样的字符表，差别在模型对该行输入的反应。
 所以这属于**模型在特定行上的行为**，需要在真实截图上做阈值/切段策略的调优。
 
+## 标定（M4b 之后）
+
+接完后的残余误差已通过基准集标定解决：**平均 CER 0.000（7 张图）**，关键是
+`unclip_ratio` 1.5→3.0 与 `REC_MAX_WIDTH` 640→960。完整过程与踩坑见
+[`docs/OCR-CALIBRATION.md`](OCR-CALIBRATION.md)，基准集在 `tools/ocr-bench/`。
+
 ## 还没做（M4c）
 
 - 框选窗口（第 4 个窗口已有 `ocr-region` 声明，尚未接线）

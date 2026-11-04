@@ -62,6 +62,11 @@ pub fn try_run() -> bool {
             import_cedict(&args);
             true
         }
+        "--ocr-bench" => {
+            crate::platform::console::attach_parent();
+            ocr_bench(&args);
+            true
+        }
         "--ocr" => {
             crate::platform::console::attach_parent();
             ocr(&args);
@@ -201,6 +206,105 @@ fn import_dict(args: &[String]) {
 
 /// 翻译一段文本。不启动 GUI，用于验证翻译链路与测时。
 /// 无头验证分词：`lemma.exe --segment "当前进度：多服务商"`
+/// OCR 基准：目录下每张图配一个同名 `.txt` 参考答案，算字符错误率（CER）。
+///
+/// 加 `LEMMA_OCR_SCALE=1.5` 可先放大再识别（小字号需要）。
+fn ocr_bench(args: &[String]) {
+    let Some(dir) = args.get(1) else {
+        eprintln!("用法：lemma.exe --ocr-bench <dir>");
+        return;
+    };
+    let scale: f32 = std::env::var("LEMMA_OCR_SCALE")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1.0);
+
+    let mut entries: Vec<std::path::PathBuf> = match std::fs::read_dir(dir) {
+        Ok(read) => read
+            .filter_map(|item| item.ok())
+            .map(|item| item.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "png"))
+            .collect(),
+        Err(error) => {
+            eprintln!("读取目录失败：{error}");
+            return;
+        }
+    };
+    entries.sort();
+    if entries.is_empty() {
+        eprintln!("目录里没有 png：{}", dir);
+        return;
+    }
+
+    println!("基准集：{} 张，预放大 {scale}×", entries.len());
+    let mut total_cer = 0.0;
+    let mut worst: Vec<(String, f64, String)> = Vec::new();
+    let mut total_ms = 0.0;
+
+    for path in &entries {
+        let truth_path = path.with_extension("txt");
+        let Ok(truth) = std::fs::read_to_string(&truth_path) else {
+            eprintln!(
+                "跳过（缺参考答案）：{}",
+                path.file_name().unwrap_or_default().to_string_lossy()
+            );
+            continue;
+        };
+        let truth = truth.replace("\r\n", "\n").trim().to_string();
+
+        let image = match image::open(path) {
+            Ok(image) => image.to_rgb8(),
+            Err(error) => {
+                eprintln!("读图失败 {}：{error}", path.display());
+                continue;
+            }
+        };
+        let (width, height) = (image.width(), image.height());
+
+        let started = Instant::now();
+        let result = crate::core::ocr::recognize_scaled(image.as_raw(), width, height, scale);
+        let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+        total_ms += elapsed;
+
+        match result {
+            Ok(blocks) => {
+                let text = crate::core::ocr::blocks_to_text(&blocks);
+                let cer = crate::core::ocr::char_error_rate(&truth, &text);
+                total_cer += cer;
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                println!(
+                    "  {name:<28} CER={:.3}  {elapsed:>6.0}ms  段={}",
+                    cer,
+                    blocks.len()
+                );
+                if cer > 0.0 {
+                    worst.push((name, cer, text.replace('\n', " / ")));
+                }
+            }
+            Err(error) => eprintln!("  {} 失败：{error}", path.display()),
+        }
+    }
+
+    let count = entries.len().max(1) as f64;
+    println!(
+        "平均 CER={:.3}  平均耗时 {:.0} ms/张  合计 {:.0} ms",
+        total_cer / count,
+        total_ms / count,
+        total_ms
+    );
+    if !worst.is_empty() {
+        worst.sort_by(|a, b| b.1.total_cmp(&a.1));
+        println!("--- 最差的几张 ---");
+        for (name, cer, text) in worst.iter().take(5) {
+            println!("  {name} CER={cer:.3}\n    识别成：{text}");
+        }
+    }
+}
+
 /// 对一张图片跑端侧 OCR。不启动 GUI，用于验证 OCR 链路与测时。
 fn ocr(args: &[String]) {
     let Some(path) = args.get(1) else {
