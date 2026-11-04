@@ -255,6 +255,32 @@ async fn call_provider(
     Err(last_error)
 }
 
+/// 预热翻译链路：把 DNS 解析 + TLS 握手的成本从「用户第一次翻译」挪到启动后。
+///
+/// 实测首次翻译 4.3 s、第二次 1.0 s，差的 3 s 全是握手。启动后后台打一次，
+/// 用户真正用时就走热连接。
+///
+/// 只对免密 provider 做：OpenAI 兼容接口按 token 计费，替用户发一次无意义请求不合适。
+/// **直接调 provider、不走 `translate()`**，避免把预热文本写进缓存。
+pub async fn warm_up(config: &TranslateConfig) {
+    if config.provider != ProviderKind::Google {
+        crate::core::logs::line("translate warmup skipped (non-google provider)");
+        return;
+    }
+
+    let started = Instant::now();
+    match google::translate("warm up", Lang::En).await {
+        Ok(_) => crate::core::logs::line(format!(
+            "translate warmup ok {:.0}ms",
+            started.elapsed().as_secs_f64() * 1000.0
+        )),
+        Err(error) => crate::core::logs::line(format!(
+            "translate warmup failed: {}",
+            truncate(&error, 100)
+        )),
+    }
+}
+
 // ---------------------------------------------------------------- Google gtx
 
 pub(crate) mod google {

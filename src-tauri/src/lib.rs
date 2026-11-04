@@ -105,6 +105,22 @@ pub fn run() {
                 logs::line(format!("trigger failed: {error}"));
             }
 
+            // 后台预热翻译连接：延迟 1.5s，避开启动高峰，也不阻塞托盘就绪。
+            {
+                let settings = app.state::<SettingsStore>().get();
+                let config = crate::core::translate::TranslateConfig {
+                    provider: settings.translate_provider,
+                    target: settings.target_lang,
+                    base_url: settings.openai_base_url,
+                    api_key: settings.openai_api_key,
+                    model: settings.openai_model,
+                };
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    crate::core::translate::warm_up(&config).await;
+                });
+            }
+
             if let Some(window) = app.get_webview_window(shell::HUD_LABEL) {
                 PlatformWindow::new(window).configure_transparency();
             }
