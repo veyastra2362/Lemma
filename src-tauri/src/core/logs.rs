@@ -12,6 +12,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
 
+/// stdout 是否可用于打日志。
+///
+/// 子进程模式下 stdout 是**协议通道**（一问一答的 JSON 行），日志混进去会把协议打乱，
+/// 所以 worker 启动时先调 `silence_stdout()`，日志改走 stderr。
+static STDOUT_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// 关闭 stdout 日志（子进程协议模式用）。之后日志只写 stderr 与文件。
+pub fn silence_stdout() {
+    STDOUT_ENABLED.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// 进程启动时间，用于给出「相对启动的毫秒偏移」。
 static START: OnceLock<SystemTime> = OnceLock::new();
 
@@ -36,7 +47,11 @@ pub fn line(message: impl AsRef<str>) {
     let message = message.as_ref();
     let rendered = format!("[+{}ms] {}", elapsed_ms(), message);
 
-    println!("{rendered}");
+    if STDOUT_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+        println!("{rendered}");
+    } else {
+        eprintln!("{rendered}");
+    }
     let Some(path) = LOG_PATH.get() else {
         return;
     };

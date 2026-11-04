@@ -172,21 +172,31 @@ pub fn run() {
                 }
                 let before = process_rss_mb();
                 let started = std::time::Instant::now();
-                match crate::core::tts::speak_text(&text, 1.0) {
-                    Ok(speech) => {
-                        let duration = speech.duration_secs();
+                // 与 speak_text 命令一致：默认走子进程，LEMMA_TTS_INPROC=1 时进程内
+                let in_process = std::env::var("LEMMA_TTS_INPROC").is_ok();
+                let result = if in_process {
+                    crate::core::tts::speak_text(&text, 1.0).map(|speech| {
                         let dir = std::env::temp_dir().join("lemma-tts");
                         let _ = std::fs::create_dir_all(&dir);
                         let path = dir.join("smoke.wav");
                         let _ = crate::core::tts::save_wav(&speech, &path);
+                        (path, speech.duration_secs())
+                    })
+                } else {
+                    crate::core::tts::phonemes_for_text(&text).and_then(|phonemes| {
+                        crate::core::tts::worker::speak(&phonemes, 1.0)
+                            .map(|speech| (speech.path, speech.duration_secs))
+                    })
+                };
+                match result {
+                    Ok((path, duration)) => {
                         let played = crate::platform::play_wav(&path);
                         let peak = process_rss_mb();
-                        // 卸掉模型后再量一次：验证"用完卸"到底有没有把内存还回系统
-                        crate::core::tts::release_model();
+                        // 进程内路径要把模型卸掉；子进程路径本来就不在主进程里\r\n                        crate::core::tts::release_model();
                         std::thread::sleep(std::time::Duration::from_millis(800));
                         let after_release = process_rss_mb();
                         logs::line(format!(
-                            "speak smoke audio={duration:.2}s total={:.0}ms rss {before:.0}→{peak:.0}MB(峰值)→{after_release:.0}MB(卸载后) play={played:?}",
+                            "speak smoke inproc={in_process} audio={duration:.2}s total={:.0}ms rss {before:.0}→{peak:.0}MB(峰值)→{after_release:.0}MB(之后) play={played:?}",
                             started.elapsed().as_secs_f64() * 1000.0,
                         ));
                     }

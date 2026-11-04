@@ -62,6 +62,10 @@ pub fn try_run() -> bool {
             import_cedict(&args);
             true
         }
+        "--tts-worker" => {
+            tts_worker();
+            true
+        }
         "--tts" => {
             crate::platform::console::attach_parent();
             tts(&args);
@@ -216,6 +220,65 @@ fn import_dict(args: &[String]) {
 
 /// 翻译一段文本。不启动 GUI，用于验证翻译链路与测时。
 /// 无头验证分词：`lemma.exe --segment "当前进度：多服务商"`
+/// 朗读子进程：把模型关在自己的进程里，主进程只负责播放。
+///
+/// 协议：每行一个请求 `{"phonemes":"ㄕㄣ1…","speed":1.0}`，回一行
+/// `{"ok":true,"path":"…wav","durationSecs":3.8}` 或 `{"ok":false,"error":"…"}`。
+/// stdin 关闭（EOF）就退出；主进程还会在空闲超时后杀掉本进程。
+fn tts_worker() {
+    use std::io::{BufRead, Write};
+
+    // stdout 是本进程的协议通道，日志必须先改道到 stderr
+    crate::core::logs::silence_stdout();
+
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let dir = std::env::temp_dir().join("lemma-tts");
+    let _ = std::fs::create_dir_all(&dir);
+
+    for line in stdin.lock().lines() {
+        let Ok(line) = line else { break };
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let response = match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(request) => {
+                let phonemes = request
+                    .get("phonemes")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default();
+                let speed = request
+                    .get("speed")
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(1.0) as f32;
+                match crate::core::tts::speak_phonemes(phonemes, speed) {
+                    Ok(speech) => {
+                        let path = dir.join("worker.wav");
+                        match crate::core::tts::save_wav(&speech, &path) {
+                            Ok(()) => serde_json::json!({
+                                "ok": true,
+                                "path": path.to_string_lossy(),
+                                "durationSecs": speech.duration_secs(),
+                            }),
+                            Err(error) => serde_json::json!({ "ok": false, "error": error }),
+                        }
+                    }
+                    Err(error) => serde_json::json!({ "ok": false, "error": error }),
+                }
+            }
+            Err(error) => {
+                serde_json::json!({ "ok": false, "error": format!("请求解析失败：{error}") })
+            }
+        };
+
+        if writeln!(stdout, "{response}").is_err() || stdout.flush().is_err() {
+            break;
+        }
+    }
+}
+
 /// 合成中文语音并写 WAV，用于验证 TTS 链路与测时。
 fn tts(args: &[String]) {
     let Some(text) = args.get(1) else {

@@ -287,36 +287,40 @@ pub async fn speak_text(app: AppHandle, text: String) -> Result<SpeakResult, Str
         .speech_speed;
 
     let started = std::time::Instant::now();
-    let speech = crate::core::tts::speak_text(&text, speed)?;
-    let synthesis_ms = started.elapsed().as_secs_f64() * 1000.0;
-    let duration = speech.duration_secs();
 
-    // 写到临时文件再交给 PlaySound：它只吃文件名，不吃内存缓冲
-    let dir = std::env::temp_dir().join("lemma-tts");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("建临时目录失败：{e}"))?;
-    let path = dir.join("speech.wav");
-    crate::core::tts::save_wav(&speech, &path)?;
+    // 默认走**子进程**：模型加载会让进程 RSS 涨到 332 MB，
+    // 关进 worker 后主进程只剩一个 WAV 路径的开销。
+    // `LEMMA_TTS_INPROC=1` 保留进程内路径，用于对照与排障。
+    let in_process = std::env::var("LEMMA_TTS_INPROC").is_ok();
+    let (path, duration) = if in_process {
+        let speech = crate::core::tts::speak_text(&text, speed)?;
+        let dir = std::env::temp_dir().join("lemma-tts");
+        std::fs::create_dir_all(&dir).map_err(|e| format!("建临时目录失败：{e}"))?;
+        let path = dir.join("speech.wav");
+        crate::core::tts::save_wav(&speech, &path)?;
+        crate::core::tts::release_model();
+        (path, speech.duration_secs())
+    } else {
+        // 音素在**主进程**算：需要 redb 词库，而 worker 打不开被锁的词库
+        let phonemes = crate::core::tts::phonemes_for_text(&text)?;
+        let speech = crate::core::tts::worker::speak(&phonemes, speed)?;
+        (speech.path, speech.duration_secs)
+    };
+    let synthesis_ms = started.elapsed().as_secs_f64() * 1000.0;
 
     if let Err(error) = crate::platform::play_wav(&path) {
         crate::core::logs::line(format!("tts play failed: {error}"));
         return Err(error);
     }
 
-    // 默认合成完就卸模型：实测加载后主进程 RSS 从 30 MB 涨到 355 MB。
-    // 用户如果连续朗读，可在设置里改成常驻（更快，但一直占着内存）。
-    let keep = app
-        .state::<crate::core::settings::SettingsStore>()
-        .get()
-        .tts_keep_loaded;
-    if !keep {
-        crate::core::tts::release_model();
-    }
-
     crate::core::logs::line(format!(
-        "tts speak chars={} audio={duration:.2}s synthesis={synthesis_ms:.0}ms rtf={:.2}x keep={keep}",
+        "tts speak chars={} audio={duration:.2}s synthesis={synthesis_ms:.0}ms rtf={:.2}x inproc={in_process}",
         text.chars().count(),
         synthesis_ms / 1000.0 / duration.max(0.001) as f64
     ));
+
+    // 顺手做一次空闲回收（60 秒没朗读就把 worker 杀掉）
+    crate::core::tts::worker::reap_if_idle();
 
     Ok(SpeakResult {
         duration_secs: duration,

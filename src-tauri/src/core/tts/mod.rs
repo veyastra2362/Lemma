@@ -9,6 +9,7 @@
 //!    任何不在表里的字符都会被静默丢弃——所以先按白名单过滤再查 id。
 
 pub mod phonemize;
+pub mod worker;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -282,7 +283,6 @@ pub fn speak_text(text: &str, speed: f32) -> Result<Speech, String> {
 /// 之前调试那份是另写的按字逻辑，结果"读"在调试里显示 dou4、实际合成却是 du2，对不上。
 pub fn phonemes_for_text(text: &str) -> Result<String, String> {
     let store = crate::core::dict::open_default()?;
-    let spacing = phonemize::Spacing::from_env();
 
     // 把原文按分词结果顺序展开，标点单独成段——这样韵律才由"词边界 + 标点"驱动。
     // misaki 的做法就是 `' '.join(word2ipa(w) for w in words)`，词内不加分隔。
@@ -313,10 +313,7 @@ pub fn phonemes_for_text(text: &str) -> Result<String, String> {
                 .filter_map(phonemize::syllable)
                 .collect();
             if !syllables.is_empty() {
-                units.push(match spacing {
-                    phonemize::Spacing::Syllable => phonemize::phonemize(&syllables),
-                    _ => phonemize::phonemize_word(&syllables),
-                });
+                units.push(phonemize::phonemize_word(&syllables));
                 continue;
             }
             // 词表里没有这个"词"：逐字兜底
@@ -351,10 +348,7 @@ pub fn phonemes_for_text(text: &str) -> Result<String, String> {
         return Err("没有可朗读的中文".to_string());
     }
 
-    let joined = match spacing {
-        phonemize::Spacing::None => units.concat(),
-        _ => units.join(" "),
-    };
+    let joined = units.join(" ");
     // 标点前不留空格（"ㄉㄨ4 ," → "ㄉㄨ4,"），与自然书写一致
     let mut cleaned = String::with_capacity(joined.len());
     for ch in joined.chars() {

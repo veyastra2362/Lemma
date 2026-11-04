@@ -219,33 +219,10 @@ pub fn syllable(raw: &str) -> Option<Syllable> {
         })
 }
 
-/// 拼接方式。
-///
-/// misaki（Kokoro 官方音素化）是 `' '.join(word2ipa(w) for w in words)`：
-/// **词内音节直接相连、词间才留空格**。我们一开始逐音节加空格，等于把每个字当成一个词，
-/// 听感就是"一个字一个字念"（用户试听反馈）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Spacing {
-    /// 词内相连、词间空格（默认，与 misaki 一致）
-    Word,
-    /// 每个音节都空格（旧行为，留作 A/B 对照）
-    Syllable,
-    /// 完全不留空格
-    None,
-}
-
-impl Spacing {
-    /// 从环境变量读，便于试听对比：`LEMMA_TTS_SPACING=word|syllable|none`
-    pub fn from_env() -> Self {
-        match std::env::var("LEMMA_TTS_SPACING").as_deref() {
-            Ok("syllable") => Self::Syllable,
-            Ok("none") => Self::None,
-            _ => Self::Word,
-        }
-    }
-}
-
 /// 把一个词内部的音节拼起来（不加分隔）。
+///
+/// 这是唯一正确的拼法：misaki（Kokoro 官方音素化）是 `' '.join(word2ipa(w) for w in words)`，
+/// **词内相连、词间空格**。曾经逐音节加空格，实测听感是"一个字一个字念"。
 pub fn phonemize_word(syllables: &[Syllable]) -> String {
     syllables
         .iter()

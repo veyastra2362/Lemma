@@ -103,12 +103,6 @@ pub struct Settings {
     /// 是否显示 HUD 底部那排快捷键提示。
     #[serde(default = "default_true")]
     pub show_hints: bool,
-    /// 朗读后是否保留模型。
-    ///
-    /// 实测加载 TTS 模型会让主进程 RSS 从 30 MB 涨到 355 MB，
-    /// 所以默认**用完就卸**；连续朗读时打开划算（省掉每次约 1.2 s 的加载）。
-    #[serde(default)]
-    pub tts_keep_loaded: bool,
     /// 朗读语速（Kokoro 的 speed 参数，1.0 为原速）。
     #[serde(default = "default_speech_speed")]
     pub speech_speed: f32,
@@ -193,7 +187,6 @@ impl Default for Settings {
             capture_mode: default_capture_mode(),
             hud_max_height: default_hud_max_height(),
             show_hints: true,
-            tts_keep_loaded: false,
             speech_speed: default_speech_speed(),
             ocr_hotkey_enabled: true,
             ocr_hotkey: default_ocr_hotkey(),

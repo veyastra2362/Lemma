@@ -1,6 +1,6 @@
 # Agent Note: 把 TTS 赶出主进程（子进程隔离）
 
-Status: proposed
+Status: implemented
 
 ## Problem
 
@@ -15,7 +15,7 @@ Status: proposed
 2. 崩溃/泄漏会带倒整个应用（TTS 是纯增量功能，不该有这个权力）；
 3. 无法在空闲时真正释放（`drop` 之后 allocator 不归还）。
 
-## Proposal
+## Decision
 
 **把 TTS 跑在同一个 exe 的子进程模式里**（`lemma.exe --tts-worker`），主进程只负责：
 
@@ -28,6 +28,23 @@ Status: proposed
 4. 主进程拿到 WAV 路径后用现有的 `PlaySound` 播放（播放留在主进程，因为它是毫秒级操作）。
 
 同一 exe 而不是单独二进制：避免安装包多一个文件、避免版本漂移。
+
+### 落地时改了协议：传**音素串**而不是原文
+
+原方案是主进程把文本发给 worker。实测直接失败：
+
+```
+speak smoke failed: Database already open. Cannot acquire lock.
+```
+
+因为拼音要查 redb 词库，而**词库被主进程独占加锁**，子进程打不开。
+所以切分点改到**音素边界**：主进程负责 文本→音素（便宜、已持锁），worker 只做 音素→音频。
+副作用是 worker 完全不碰我们的数据，更干净。
+
+### 空闲回收必须靠独立线程
+
+第一版只在"下一次朗读"时检查空闲，结果**读一次就再也不会回收**，worker 揣着 300 MB 活到退出。
+加了后台线程（每 5 s 检查），worker 被回收后线程自行结束。
 
 ## Alternatives considered
 
@@ -43,7 +60,23 @@ Status: proposed
   否决原因：会牺牲音质，而音质目前恰恰是用户唯一反馈的短板（"字字断开"）。
   等韵律问题解决、有音质基线之后再单独评估量化档位。
 
-## Acceptance criteria
+## Testing
+
+真机实测（`LEMMA_SPEAK_SMOKE` + `LEMMA_TTS_IDLE_SECS=6`）：
+
+```
+tts worker spawned
+speak smoke inproc=false audio=1.27s total=3663ms rss 30→43MB(峰值)→44MB(之后) play=Ok(())
+tts worker reaped (idle)          ← 空闲 6 秒后回收
+```
+
+| 指标 | 进程内（旧） | 子进程（现在） |
+| --- | --- | --- |
+| 主进程 RSS 峰值 | 333 MB | **44 MB（+14 MB）** |
+| 模型所在 | 主进程 | 独立进程（约 245–305 MB） |
+| 空闲回收 | 需手动 release | 自动（60 s，可调） |
+
+对照仍在：`LEMMA_TTS_INPROC=1` 走老的进程内路径。
 
 - 朗读前后主进程 RSS 增量 **< 20 MB**（模型完全在子进程里）。
 - 子进程空闲 60 s 后自动退出，且退出后系统里不残留 `lemma.exe --tts-worker`。
@@ -51,7 +84,7 @@ Status: proposed
 - `lemma.exe --tts-worker` 可被独立驱动（脚本喂 JSON → 得到 WAV 路径），便于无头验证。
 - 连续朗读 3 句时，第二句起不再付 1.2 s 加载成本（worker 仍在）。
 
-## Risks
+## Consequences
 
 - 管道 JSON 需要严格的版本/字段校验；worker 与主进程是同一个二进制，不会漂移，但仍要防脏数据。
 - 子进程继承环境变量与工作目录，需要显式设定（尤其 `%APPDATA%` 相关路径不要依赖 cwd）。
