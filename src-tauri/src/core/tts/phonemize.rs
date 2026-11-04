@@ -219,13 +219,64 @@ pub fn syllable(raw: &str) -> Option<Syllable> {
         })
 }
 
-/// 把一串音节拼成 Kokoro 认的音素串（音节之间空格，声调是数字）。
+/// 拼接方式。
+///
+/// misaki（Kokoro 官方音素化）是 `' '.join(word2ipa(w) for w in words)`：
+/// **词内音节直接相连、词间才留空格**。我们一开始逐音节加空格，等于把每个字当成一个词，
+/// 听感就是"一个字一个字念"（用户试听反馈）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Spacing {
+    /// 词内相连、词间空格（默认，与 misaki 一致）
+    Word,
+    /// 每个音节都空格（旧行为，留作 A/B 对照）
+    Syllable,
+    /// 完全不留空格
+    None,
+}
+
+impl Spacing {
+    /// 从环境变量读，便于试听对比：`LEMMA_TTS_SPACING=word|syllable|none`
+    pub fn from_env() -> Self {
+        match std::env::var("LEMMA_TTS_SPACING").as_deref() {
+            Ok("syllable") => Self::Syllable,
+            Ok("none") => Self::None,
+            _ => Self::Word,
+        }
+    }
+}
+
+/// 把一个词内部的音节拼起来（不加分隔）。
+pub fn phonemize_word(syllables: &[Syllable]) -> String {
+    syllables
+        .iter()
+        .map(|syllable| format!("{}{}", syllable.bopomofo, syllable.tone))
+        .collect()
+}
+
+/// 把一串音节拼成音素串（旧接口：逐音节空格）。
 pub fn phonemize(syllables: &[Syllable]) -> String {
     syllables
         .iter()
         .map(|syllable| format!("{}{}", syllable.bopomofo, syllable.tone))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// 中文标点 → Kokoro 词表里的标点。
+///
+/// 韵律很大程度靠标点驱动（逗号短停、句号长停），词表里有 `, . ! ? ; : — …`。
+/// 不映射的话标点会被词表过滤掉，整段就没有停顿了。
+pub fn punctuation(ch: char) -> Option<char> {
+    Some(match ch {
+        '，' | '、' | '；' | '：' => ',',
+        '。' | '．' => '.',
+        '！' => '!',
+        '？' => '?',
+        '…' => '.',
+        '—' | '–' | '－' => '-',
+        ',' | '.' | '!' | '?' | ';' | ':' => ch,
+        _ => return None,
+    })
 }
 
 /// 把 CC-CEDICT 的拼音串（`du4 fu3`）整体转成音素串。

@@ -282,56 +282,88 @@ pub fn speak_text(text: &str, speed: f32) -> Result<Speech, String> {
 /// 之前调试那份是另写的按字逻辑，结果"读"在调试里显示 dou4、实际合成却是 du2，对不上。
 pub fn phonemes_for_text(text: &str) -> Result<String, String> {
     let store = crate::core::dict::open_default()?;
+    let spacing = phonemize::Spacing::from_env();
 
-    let mut phonemes = String::new();
-    // 有分词器就用词级拼音，没有就退化成单字
-    let words: Vec<String> = match crate::core::segment::global() {
-        Some(segmenter) => segmenter
-            .segment(text)
-            .into_iter()
-            .filter(|token| token.known)
-            .map(|token| token.text)
-            .collect(),
+    // 把原文按分词结果顺序展开，标点单独成段——这样韵律才由"词边界 + 标点"驱动。
+    // misaki 的做法就是 `' '.join(word2ipa(w) for w in words)`，词内不加分隔。
+    let mut units: Vec<String> = Vec::new();
+
+    let tokens = match crate::core::segment::global() {
+        Some(segmenter) => segmenter.segment(text),
+        // 没有分词器：按字切开（最保守，不会把词黏在一起）
         None => text
             .chars()
-            .filter(|ch| crate::core::segment::is_cjk(*ch))
-            .map(|ch| ch.to_string())
+            .map(|ch| crate::core::segment::Token {
+                text: ch.to_string(),
+                known: crate::core::segment::is_cjk(ch),
+            })
             .collect(),
     };
 
-    for word in words {
-        let pinyin = store
-            .get_zh(&word)
-            .ok()
-            .flatten()
-            .map(|entry| entry.phonetic)
-            .unwrap_or_default();
-        let converted = phonemize::phonemize_pinyin(&pinyin);
-        if !converted.is_empty() {
-            phonemes.push_str(&converted);
-            phonemes.push(' ');
-            continue;
-        }
-        // 词表里没有（或没有拼音）：逐字兜底
-        for ch in word.chars().filter(|ch| crate::core::segment::is_cjk(*ch)) {
-            let fallback = store
-                .get_zh(&ch.to_string())
+    for token in tokens {
+        if token.known {
+            let pinyin = store
+                .get_zh(&token.text)
                 .ok()
                 .flatten()
                 .map(|entry| entry.phonetic)
                 .unwrap_or_default();
-            let converted = phonemize::phonemize_pinyin(&fallback);
-            if !converted.is_empty() {
-                phonemes.push_str(&converted);
-                phonemes.push(' ');
+            let syllables: Vec<phonemize::Syllable> = pinyin
+                .split_whitespace()
+                .filter_map(phonemize::syllable)
+                .collect();
+            if !syllables.is_empty() {
+                units.push(match spacing {
+                    phonemize::Spacing::Syllable => phonemize::phonemize(&syllables),
+                    _ => phonemize::phonemize_word(&syllables),
+                });
+                continue;
+            }
+            // 词表里没有这个"词"：逐字兜底
+            for ch in token
+                .text
+                .chars()
+                .filter(|ch| crate::core::segment::is_cjk(*ch))
+            {
+                let fallback = store
+                    .get_zh(&ch.to_string())
+                    .ok()
+                    .flatten()
+                    .map(|entry| entry.phonetic)
+                    .unwrap_or_default();
+                let converted = phonemize::phonemize_pinyin(&fallback);
+                if !converted.is_empty() {
+                    units.push(converted);
+                }
+            }
+            continue;
+        }
+
+        // 非汉字段：把标点挑出来当独立单元（顿号、逗号、句号……）
+        for ch in token.text.chars() {
+            if let Some(mark) = phonemize::punctuation(ch) {
+                units.push(mark.to_string());
             }
         }
     }
 
-    if phonemes.trim().is_empty() {
+    if units.is_empty() {
         return Err("没有可朗读的中文".to_string());
     }
-    Ok(phonemes.trim().to_string())
+
+    let joined = match spacing {
+        phonemize::Spacing::None => units.concat(),
+        _ => units.join(" "),
+    };
+    // 标点前不留空格（"ㄉㄨ4 ," → "ㄉㄨ4,"），与自然书写一致
+    let mut cleaned = String::with_capacity(joined.len());
+    for ch in joined.chars() {
+        if matches!(ch, ',' | '.' | '!' | '?' | ';' | ':') && cleaned.ends_with(' ') {
+            cleaned.pop();
+        }
+        cleaned.push(ch);
+    }
+    Ok(cleaned.trim().to_string())
 }
 /// 保存为 WAV 文件。
 pub fn save_wav(speech: &Speech, path: &Path) -> Result<(), String> {
