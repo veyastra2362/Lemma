@@ -9,7 +9,7 @@ use tauri::{
 use crate::core::shell;
 
 pub fn install(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let hud_item = MenuItem::with_id(app, "hud", "显示浮层 (Alt+Q)", true, None::<&str>)?;
+    let hud_item = MenuItem::with_id(app, "hud", "显示浮层", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
     let capture_item = MenuItem::with_id(app, "capture", "截图识别…", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
