@@ -7,6 +7,7 @@ import type {
   PaintSample,
   RuntimeStats,
   Settings,
+  TranslateResult,
 } from "../types";
 
 /** 是否跑在 Tauri 宿主里（`pnpm dev` 直接开浏览器时为 false）。 */
@@ -65,6 +66,9 @@ export const ipc = {
   resizeHud: (height: number) => invoke<void>("resize_hud", { height }),
   /** Deck 下探查词。未收录返回 null。 */
   lookupWord: (word: string) => invoke<Entry | null>("lookup_word", { word }),
+  /** 翻译一段文本（走 Rust 的分级路由 + 缓存）。失败会 reject。 */
+  translateText: (text: string) =>
+    invoke<TranslateResult>("translate_text", { text }),
   reportFirstPaint: (seq: number) => invoke<void>("report_first_paint", { seq }),
 };
 

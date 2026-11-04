@@ -64,6 +64,13 @@ pub fn update_settings(
     let mut next = next;
     next.hotkey = next.hotkey.trim().to_string();
 
+    // 换了 provider 或目标语言，旧译文不该再命中。
+    if next.translate_provider != previous.translate_provider
+        || next.target_lang != previous.target_lang
+    {
+        crate::core::translate::clear_cache();
+    }
+
     let saved = store.set(next)?;
     if let Err(error) = crate::core::trigger::apply(&app) {
         let _ = store.set(previous.clone());
@@ -85,6 +92,25 @@ pub fn update_settings(
 #[tauri::command]
 pub fn close_settings(app: AppHandle) {
     crate::core::shell::close_settings(&app);
+}
+
+/// 翻译一段文本。走 `core::translate` 的分级路由 + 缓存。
+///
+/// 明确的 async 命令：网络往返 ~700 ms，不能阻塞 UI 线程。
+#[tauri::command]
+pub async fn translate_text(
+    store: State<'_, SettingsStore>,
+    text: String,
+) -> Result<crate::core::translate::TranslateResult, String> {
+    let settings = store.get();
+    let config = crate::core::translate::TranslateConfig {
+        provider: settings.translate_provider,
+        target: settings.target_lang,
+        base_url: settings.openai_base_url,
+        api_key: settings.openai_api_key,
+        model: settings.openai_model,
+    };
+    crate::core::translate::translate(&text, &config).await
 }
 
 /// 查一个词（Deck 下探用）。未收录返回 null，不是错误。

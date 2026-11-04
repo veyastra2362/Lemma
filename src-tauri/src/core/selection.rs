@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::core::dict::{self, Entry};
 use crate::core::settings::CaptureMode;
 use crate::core::text::{sentence_containing, trim_word};
+use crate::core::translate::is_single_word;
 use crate::platform::{self, clipboard, uia::UiaOutcome};
 
 /// 等剪贴板变化的上限。给低了会在慢应用上误判失败，给高了用户会觉得卡。
@@ -52,6 +53,8 @@ pub struct Capture {
     pub tier: Option<Tier>,
     /// 词库命中的词条；没装词库或未收录时为 None。
     pub entry: Option<Entry>,
+    /// 这段文本是不是「该走翻译」而不是查词。判定规则在 `translate::is_single_word`。
+    pub needs_translation: bool,
     /// 来源进程名，纯诊断用。
     pub app: String,
     pub elapsed_ms: f64,
@@ -128,10 +131,12 @@ pub fn capture(mode: CaptureMode) -> Capture {
 
     if let Some((tier, text)) = pick_uia(&uia, mode) {
         let entry = dict::lookup_global(&text);
+        let needs_translation = !is_single_word(&text);
         let result = Capture {
             sentence: sentence_containing(&uia.paragraph, &text),
             paragraph: uia.paragraph,
             entry,
+            needs_translation,
             text,
             tier: Some(tier),
             app: uia.app,
@@ -162,6 +167,7 @@ pub fn capture(mode: CaptureMode) -> Capture {
                     sentence: text.clone(),
                     paragraph: text.clone(),
                     entry: dict::lookup_global(&text),
+                    needs_translation: !is_single_word(&text),
                     text,
                     tier: Some(Tier::Clipboard),
                     app: uia.app,

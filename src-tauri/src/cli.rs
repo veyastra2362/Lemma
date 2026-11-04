@@ -57,6 +57,11 @@ pub fn try_run() -> bool {
             lookup(&args);
             true
         }
+        "--translate" => {
+            crate::platform::console::attach_parent();
+            translate(&args);
+            true
+        }
         _ => false,
     }
 }
@@ -176,6 +181,57 @@ fn import_dict(args: &[String]) {
             }
         }
         Err(error) => eprintln!("导入失败：{error}"),
+    }
+}
+
+/// 翻译一段文本。不启动 GUI，用于验证翻译链路与测时。
+fn translate(args: &[String]) {
+    let text = args[1..]
+        .iter()
+        .filter(|arg| !arg.starts_with("--"))
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if text.trim().is_empty() {
+        eprintln!("用法：lemma.exe --translate <text>");
+        return;
+    }
+
+    let settings = paths::app_data_dir()
+        .map(|dir| crate::core::settings::SettingsStore::load(&dir).get())
+        .unwrap_or_default();
+
+    let config = crate::core::translate::TranslateConfig {
+        provider: settings.translate_provider,
+        target: settings.target_lang,
+        base_url: settings.openai_base_url,
+        api_key: settings.openai_api_key,
+        model: settings.openai_model,
+    };
+
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("创建异步运行时失败：{error}");
+            return;
+        }
+    };
+
+    println!("原文：{text}");
+    println!("provider={:?} target={:?}", config.provider, config.target);
+
+    match runtime.block_on(crate::core::translate::translate(&text, &config)) {
+        Ok(result) => {
+            println!("译文：{}", result.text);
+            println!(
+                "来源：{} · {:.0} ms{}",
+                result.provider,
+                result.elapsed_ms,
+                if result.cached { "（缓存）" } else { "" }
+            );
+        }
+        Err(error) => eprintln!("翻译失败：{error}"),
     }
 }
 

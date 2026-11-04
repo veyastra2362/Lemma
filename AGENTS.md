@@ -48,7 +48,11 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 5. **注册全局热键会撞车**（本机 Alt+Q 已被占用）。`RegisterHotKey` 是独占的，
    所以默认触发放到「双击 Ctrl」，热键模式只是可选项；注册失败必须**回滚到旧配置**
    并把原因返回给界面（见 `commands::update_settings`），不能出现「存下来了但不生效」。
-6. **WebView2 的 IPC 通道建立和页面模块执行有竞争**：`__TAURI_INTERNALS__` 已存在时
+6. **搬动项目目录后必须重建**：`node_modules` 里的符号链接与 `src-tauri/target` 里 tauri-build
+   生成的权限清单都记着**绝对路径**。搬完目录会看到 `pnpm typecheck` 崩栈、`tauri build` 报
+   `系统找不到指定的路径`。处理办法：`CI=true pnpm install`（**不加 `CI=true` 会因无 TTY
+   拒绝删除 `node_modules`**）+ `cargo clean` 后重建。
+7. **WebView2 的 IPC 通道建立和页面模块执行有竞争**：`__TAURI_INTERNALS__` 已存在时
    `invoke` 仍可能第一次被拒。前端 IPC 调用统一走 `withRetry`（见 `src/lib/ipc.ts`）。
 
 ## 不变式（改动了会出隐蔽故障）

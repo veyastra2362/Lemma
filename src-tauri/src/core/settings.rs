@@ -11,6 +11,8 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+use crate::core::translate::{Lang, ProviderKind};
+
 /// 呼出方式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +85,20 @@ pub struct Settings {
     /// 是否显示 HUD 底部那排快捷键提示。
     #[serde(default = "default_true")]
     pub show_hints: bool,
+    /// 翻译走哪个服务。
+    #[serde(default = "default_provider")]
+    pub translate_provider: ProviderKind,
+    /// 目标语言。
+    #[serde(default = "default_target_lang")]
+    pub target_lang: Lang,
+    #[serde(default = "default_base_url")]
+    pub openai_base_url: String,
+    /// 明文存在 settings.json 里——这是本机个人工具，不做密钥托管；
+    /// 但**不要**把它提交进仓库（`.gitignore` 已挡）。
+    #[serde(default)]
+    pub openai_api_key: String,
+    #[serde(default = "default_model")]
+    pub openai_model: String,
     #[serde(default)]
     pub card_sections: CardSections,
 }
@@ -99,6 +115,22 @@ fn default_true() -> bool {
     true
 }
 
+fn default_provider() -> ProviderKind {
+    ProviderKind::Google
+}
+
+fn default_target_lang() -> Lang {
+    Lang::Zh
+}
+
+fn default_base_url() -> String {
+    "https://api.openai.com/v1".to_string()
+}
+
+fn default_model() -> String {
+    "gpt-4o-mini".to_string()
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -107,6 +139,11 @@ impl Default for Settings {
             capture_mode: default_capture_mode(),
             hud_max_height: default_hud_max_height(),
             show_hints: true,
+            translate_provider: default_provider(),
+            target_lang: default_target_lang(),
+            openai_base_url: default_base_url(),
+            openai_api_key: String::new(),
+            openai_model: default_model(),
             card_sections: CardSections::default(),
         }
     }

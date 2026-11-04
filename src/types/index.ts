@@ -27,6 +27,19 @@ export interface CardSections {
   exchange: boolean;
 }
 
+/** 翻译服务。 */
+export type TranslateProvider = "google" | "openAi";
+
+/** 目标语言。 */
+export type TranslateLang = "zh" | "en";
+
+export interface TranslateResult {
+  text: string;
+  provider: string;
+  elapsedMs: number;
+  cached: boolean;
+}
+
 export interface Settings {
   trigger: Trigger;
   /** 形如 `Alt+Q`，仅在 trigger === "hotkey" 时生效。 */
@@ -37,6 +50,12 @@ export interface Settings {
   /** 是否显示 HUD 底部那排快捷键提示。 */
   showHints: boolean;
   cardSections: CardSections;
+  /** 翻译走哪个服务。 */
+  translateProvider: TranslateProvider;
+  targetLang: TranslateLang;
+  openaiBaseUrl: string;
+  openaiApiKey: string;
+  openaiModel: string;
 }
 
 /** 取词命中的档位，与 Rust 侧 `core::selection::Tier` 对应。 */
@@ -64,6 +83,8 @@ export interface Capture {
   tier: CaptureTier | null;
   /** 词库命中的词条；未收录或没装词库时为 null。 */
   entry: Entry | null;
+  /** 这段文本该走翻译而不是查词（规则在 Rust 侧 `translate::is_single_word`）。 */
+  needsTranslation: boolean;
   /** 来源进程名，诊断用。 */
   app: string;
   elapsedMs: number;

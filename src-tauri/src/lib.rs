@@ -62,6 +62,7 @@ pub fn run() {
             commands::update_settings,
             commands::close_settings,
             commands::lookup_word,
+            commands::translate_text,
             commands::resize_hud,
             commands::report_first_paint,
         ])

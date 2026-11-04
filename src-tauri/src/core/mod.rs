@@ -9,5 +9,6 @@ pub mod selection;
 pub mod settings;
 pub mod shell;
 pub mod text;
+pub mod translate;
 pub mod tray;
 pub mod trigger;

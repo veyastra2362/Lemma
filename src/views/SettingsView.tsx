@@ -48,6 +48,49 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** 文本输入：本地草稿，失焦或回车才提交，避免每敲一个字符就写盘 + 打网络。 */
+function TextField({
+  label,
+  hint,
+  value,
+  onCommit,
+  secret,
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  onCommit: (next: string) => void;
+  secret?: boolean;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  const commit = () => {
+    if (draft !== value) {
+      onCommit(draft);
+    }
+  };
+
+  return (
+    <label className="block rounded-lg border border-white/10 px-3 py-2">
+      <span className="block text-[11px] text-[var(--hud-muted)]">{label}</span>
+      <input
+        type={secret ? "password" : "text"}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            commit();
+          }
+        }}
+        className="mt-1 w-full bg-transparent font-mono text-[12px] text-[var(--hud-text)] outline-none placeholder:text-[var(--hud-muted)]/50"
+        placeholder={hint}
+      />
+    </label>
+  );
+}
+
 function Radio({
   active,
   label,
@@ -265,6 +308,75 @@ export function SettingsView() {
                 onClick={() => apply({ captureMode: option.value })}
               />
             ))}
+          </div>
+        </section>
+
+        {/* ---- 翻译 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionTranslate")}
+          </h2>
+          <div className="space-y-1.5">
+            <Radio
+              active={settings?.translateProvider === "google"}
+              label={t("settingsTranslateGoogle")}
+              hint={t("settingsTranslateGoogleHint")}
+              onClick={() => apply({ translateProvider: "google" })}
+            />
+            <Radio
+              active={settings?.translateProvider === "openAi"}
+              label={t("settingsTranslateOpenai")}
+              hint={t("settingsTranslateOpenaiHint")}
+              onClick={() => apply({ translateProvider: "openAi" })}
+            />
+          </div>
+
+          <div className="mt-2 space-y-1.5">
+            <div className="flex gap-1.5">
+              {(
+                [
+                  { value: "zh" as const, label: t("settingsTargetZh") },
+                  { value: "en" as const, label: t("settingsTargetEn") },
+                ]
+              ).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => apply({ targetLang: option.value })}
+                  className={`rounded-md border px-3 py-1 text-[12px] transition ${
+                    settings?.targetLang === option.value
+                      ? "border-[var(--hud-accent)] text-[var(--hud-accent)]"
+                      : "border-white/12 text-[var(--hud-muted)] hover:border-white/30"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {settings?.translateProvider === "openAi" && settings && (
+              <div className="space-y-1.5">
+                <TextField
+                  label={t("settingsOpenaiBaseUrl")}
+                  hint="https://api.openai.com/v1"
+                  value={settings.openaiBaseUrl}
+                  onCommit={(next) => apply({ openaiBaseUrl: next })}
+                />
+                <TextField
+                  label={t("settingsOpenaiKey")}
+                  hint={t("settingsOpenaiKeyHint")}
+                  value={settings.openaiApiKey}
+                  secret
+                  onCommit={(next) => apply({ openaiApiKey: next })}
+                />
+                <TextField
+                  label={t("settingsOpenaiModel")}
+                  hint="gpt-4o-mini"
+                  value={settings.openaiModel}
+                  onCommit={(next) => apply({ openaiModel: next })}
+                />
+              </div>
+            )}
           </div>
         </section>
 

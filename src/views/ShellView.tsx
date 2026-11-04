@@ -78,6 +78,39 @@ function CardView({
 }) {
   const entry = card.entry;
 
+  // ---- 句卡片：译文为主，原文为辅 ----
+  if (card.original) {
+    const translation = card.translation;
+    return (
+      <div className="pb-1">
+        {translation.status === "done" && (
+          <p className="text-[16px] leading-snug">{translation.text}</p>
+        )}
+        {translation.status === "loading" && (
+          <p className="text-[13px] text-[var(--hud-muted)]">{t("translateLoading")}</p>
+        )}
+        {translation.status === "error" && (
+          <>
+            <p className="text-[13px] text-[var(--hud-muted)]">{t("translateFailed")}</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-red-300/80">
+              {translation.error}
+            </p>
+          </>
+        )}
+        {!collapsed && (
+          <p className="mt-1 line-clamp-3 text-[11px] leading-relaxed text-[var(--hud-muted)]">
+            {card.original}
+          </p>
+        )}
+        <p className="mt-1 font-mono text-[10px] text-[var(--hud-muted)]/70">
+          {card.elapsedMs !== null && `${card.source ?? ""} · ${card.elapsedMs.toFixed(0)}ms`}
+          {translation.status === "done" &&
+            ` · ${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
+        </p>
+      </div>
+    );
+  }
+
   if (collapsed) {
     // 旧卡片压成一行：只留词 + 第一条释义，点击可跳回。
     return (
@@ -187,6 +220,7 @@ export function ShellView() {
   const showHints = settings?.showHints ?? true;
   const push = useDeckStore((state) => state.push);
   const jumpTo = useDeckStore((state) => state.jumpTo);
+  const setTranslation = useDeckStore((state) => state.setTranslation);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const lastRequested = useRef(0);
@@ -220,6 +254,38 @@ export function ShellView() {
     observer.observe(element);
     return () => observer.disconnect();
   }, [cards, settings, showHints]);
+
+  // 句卡片：一旦出现就去翻译（异步，不挡 HUD 首帧）。
+  const translatedCard = useRef<number | null>(null);
+  const rootCard = cards[0];
+  useEffect(() => {
+    if (!rootCard || !rootCard.original || rootCard.translation.status !== "idle") {
+      return;
+    }
+    if (translatedCard.current === rootCard.id) {
+      return;
+    }
+    translatedCard.current = rootCard.id;
+    const cardId = rootCard.id;
+    setTranslation(cardId, { status: "loading" });
+    void ipc
+      .translateText(rootCard.original)
+      .then((result) => {
+        setTranslation(cardId, {
+          status: "done",
+          text: result.text,
+          provider: result.provider,
+          elapsedMs: result.elapsedMs,
+          cached: result.cached,
+        });
+      })
+      .catch((reason: unknown) => {
+        setTranslation(cardId, {
+          status: "error",
+          error: reason instanceof Error ? reason.message : String(reason),
+        });
+      });
+  }, [rootCard, setTranslation]);
 
   const openWord = (word: string) => {
     if (!isTauri()) {
