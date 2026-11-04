@@ -18,6 +18,17 @@ interface Selection {
  * 再加上窗口左上角在虚拟桌面里的物理坐标（多屏时可为负）。
  */
 export function RegionSelectView() {
+  /** 快捷键提示是否显示（设置里可关）。拖拽说明始终显示，否则用户不知道要做什么。 */
+  const [showHints, setShowHints] = useState(true);
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+    void ipc
+      .getSettings()
+      .then((value) => setShowHints(value.showHints))
+      .catch(() => undefined);
+  }, []);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +139,7 @@ export function RegionSelectView() {
       {!selection && !error && (
         <div className="pointer-events-none absolute left-1/2 top-8 -translate-x-1/2 rounded-lg border border-white/15 bg-black/70 px-4 py-2 text-[12px] text-white/85">
           {t("regionHint")}
+          {showHints && ` · ${t("regionHintCancel")}`}
         </div>
       )}
 

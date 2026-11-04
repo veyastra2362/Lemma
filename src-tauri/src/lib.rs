@@ -216,8 +216,13 @@ pub fn run() {
             // 用它去截物理像素会错位（本机 125% 缩放下踩过）。进程内取矩形才是准的。
             if let Ok(label) = std::env::var("LEMMA_CAPTURE_WINDOW_SMOKE") {
                 let handle = handle.clone();
+                // 延迟可调：需要在截图前用真实点击制造界面状态时（`LEMMA_CAPTURE_DELAY_MS`）
+                let delay_ms = std::env::var("LEMMA_CAPTURE_DELAY_MS")
+                    .ok()
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .unwrap_or(1800);
                 tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(1800)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                     let Some(window) = handle.get_webview_window(&label) else {
                         logs::line(format!("capture window: 找不到 {label}"));
                         return;

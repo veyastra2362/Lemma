@@ -52,8 +52,6 @@ function splitSentences(text: string): string[] {
   return sentences;
 }
 
-const MAX_DRILL = 16;
-
 /**
  * 双栏对照窗口。
  *
@@ -68,13 +66,21 @@ const MAX_DRILL = 16;
 export function ReaderView() {
   const [content, setContent] = useState<ReaderContent | null>(null);
   const [blocks, setBlocks] = useState<BlockState[]>([]);
-  const [drill, setDrill] = useState<Drill[]>([]);
+  /**
+   * 底部词条面板的内容（**只有一条**）。
+   *
+   * 原来这里是个下探栈 + 面包屑，但双栏底部只是一块"随手查一下"的附注面板：
+   * 再点一个词就该把内容换掉，而不是压一层新层级。层级只在 HUD 的卡片栈里有意义。
+   */
+  const [lookup, setLookup] = useState<Drill | null>(null);
   const [mode, setMode] = useState<ViewMode>("side");
   const [hovered, setHovered] = useState<number | null>(null);
   const [speechReady, setSpeechReady] = useState(false);
   /** 两个朗读按钮是否显示（设置里可关）。 */
   const [speakOriginal, setSpeakOriginal] = useState(true);
   const [speakTranslation, setSpeakTranslation] = useState(true);
+  /** 是否显示快捷键提示（设置里可关）。 */
+  const [showHints, setShowHints] = useState(true);
   /** 跟读：正在朗读的词（全局序号），null 表示没在朗读。 */
   const [spokenWord, setSpokenWord] = useState<number | null>(null);
   /** 是否正在朗读（含"读译文"，那种情况不逐词高亮）。 */
@@ -241,7 +247,7 @@ export function ReaderView() {
     loadSeq.current = seq;
     let cancelled = false;
 
-    setDrill([]);
+    setLookup(null);
     setError(null);
 
     void ipc
@@ -344,6 +350,7 @@ export function ReaderView() {
       .then((value) => {
         setSpeakOriginal(value.speakOriginal);
         setSpeakTranslation(value.speakTranslation);
+        setShowHints(value.showHints);
       })
       .catch(() => undefined);
   }, []);
@@ -357,8 +364,8 @@ export function ReaderView() {
         return;
       }
       event.preventDefault();
-      if (drill.length > 0) {
-        setDrill((prev) => prev.slice(0, -1));
+      if (lookup) {
+        setLookup(null);
         return;
       }
       void ipc.closeReader();
@@ -396,7 +403,7 @@ export function ReaderView() {
       unlisten?.();
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [drill.length, load]);
+  }, [lookup, load]);
 
   const syncScroll = (from: "left" | "right") => {
     const source = from === "left" ? leftRef.current : rightRef.current;
@@ -427,23 +434,17 @@ export function ReaderView() {
     if (!isTauri() || !term) {
       return;
     }
-    setDrill((prev) => {
-      if (prev.length >= MAX_DRILL || prev.some((item) => item.word === term)) {
-        return prev;
-      }
-      return [...prev, { word: term, entry: null }];
-    });
+    setLookup({ word: term, entry: null });
     void ipc
       .lookupWord(term)
       .then((entry) => {
-        setDrill((prev) =>
-          prev.map((item) => (item.word === term ? { ...item, entry } : item)),
-        );
+        // 只更新"还是这个词"的情况：用户可能已经点了别的词
+        setLookup((prev) => (prev && prev.word === term ? { ...prev, entry } : prev));
       })
       .catch(() => undefined);
   };
 
-  const current = drill[drill.length - 1];
+  const current = lookup;
 
   const renderClickable = (text: string, muted: boolean, baseWord = -1) => {
     // baseWord >= 0 时把该段之前的累计词数加上，得到"全文第几个词"，用于跟读高亮
@@ -797,29 +798,26 @@ export function ReaderView() {
 
       {current && (
         <footer className="shrink-0 border-t border-white/8 bg-black/20 px-4 py-2">
-          <div className="flex flex-wrap items-center gap-1 text-[11px] text-[var(--hud-muted)]">
-            {drill.map((item, index) => (
-              <span key={`${item.word}-${index}`} className="flex items-center gap-1">
-                {index > 0 && <span className="opacity-40">›</span>}
-                <button
-                  type="button"
-                  onClick={() => setDrill((prev) => prev.slice(0, index + 1))}
-                  className={
-                    index === drill.length - 1 ? "text-[var(--hud-text)]" : "hover:text-white"
-                  }
-                >
-                  {item.word}
-                </button>
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-[var(--hud-text)]">{current.word}</span>
+            {current.entry?.phonetic && (
+              <span className="font-mono text-[11px] text-[var(--hud-muted)]">
+                /{current.entry.phonetic}/
               </span>
-            ))}
-            <span className="ml-auto opacity-70">{t("readerEscHint")}</span>
+            )}
+            {showHints && (
+              <span className="ml-auto text-[11px] text-[var(--hud-muted)] opacity-70">
+                {t("readerEscHint")}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setLookup(null)}
+              className={`${showHints ? "ml-2" : "ml-auto"} text-[11px] text-[var(--hud-muted)] hover:text-white`}
+            >
+              {t("readerLookupClose")}
+            </button>
           </div>
-
-          {current.entry?.phonetic && (
-            <p className="mt-1 font-mono text-[11px] text-[var(--hud-muted)]">
-              /{current.entry.phonetic}/
-            </p>
-          )}
 
           {current.entry ? (
             <div className="mt-0.5 max-h-32 space-y-0.5 overflow-y-auto">
@@ -834,9 +832,7 @@ export function ReaderView() {
                 ))}
             </div>
           ) : (
-            <p className="mt-0.5 text-[11px] text-[var(--hud-muted)]">
-              {t("cardNotInDict")}
-            </p>
+            <p className="mt-0.5 text-[11px] text-[var(--hud-muted)]">{t("cardNotInDict")}</p>
           )}
         </footer>
       )}
