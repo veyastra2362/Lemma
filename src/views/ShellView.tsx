@@ -72,6 +72,8 @@ function CardView({
   collapsed,
   onOpenReader,
   onSpeak,
+  speakOriginal,
+  speakTranslation,
 }: {
   card: Card;
   sections: CardSections | null;
@@ -81,6 +83,10 @@ function CardView({
   onOpenReader: ((text: string) => void) | null;
   /** 为 null 表示朗读不可用（模型未装），不显示入口。 */
   onSpeak: ((text: string) => void) | null;
+  /** 是否显示「朗读原文」（设置里可关）。 */
+  speakOriginal: boolean;
+  /** 是否显示「朗读译文」（设置里可关）。 */
+  speakTranslation: boolean;
 }) {
   const entry = card.entry;
 
@@ -116,16 +122,28 @@ function CardView({
               ` · ${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
           </p>
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            {/* 朗读不再只认中文：英文（CMU 词典）也能读，只要有原文就给入口 */}
-            {onSpeak && (card.original ?? "").trim().length > 0 && (
+            {/* 两个朗读入口：原文与译文分开。读英文原文时想听中文译文，就点第二个。 */}
+            {onSpeak && speakOriginal && (card.original ?? "").trim().length > 0 && (
               <button
                 type="button"
                 onClick={() => onSpeak(card.original as string)}
                 className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
               >
-                {t("speakStart")}
+                {t("speakOriginal")}
               </button>
             )}
+            {onSpeak &&
+              speakTranslation &&
+              card.translation.status === "done" &&
+              card.translation.text.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onSpeak((card.translation as { text: string }).text)}
+                  className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+                >
+                  {t("speakTranslation")}
+                </button>
+              )}
             {onOpenReader && (
               <button
                 type="button"
@@ -492,6 +510,8 @@ export function ShellView() {
                   settings?.readerOpenMode !== "off" && card.screenshot ? openReader : null
                 }
                 onSpeak={speechReady ? speak : null}
+                speakOriginal={settings?.speakOriginal ?? true}
+                speakTranslation={settings?.speakTranslation ?? true}
               />
             ))}
           </>

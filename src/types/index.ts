@@ -92,6 +92,10 @@ export interface Settings {
   cardSections: CardSections;
   /** 翻译走哪个服务。 */
   speechSpeed: number;
+  /** 卡片上是否显示「朗读原文」。 */
+  speakOriginal: boolean;
+  /** 卡片上是否显示「朗读译文」。 */
+  speakTranslation: boolean;
   ocrHotkeyEnabled: boolean;
   ocrHotkey: string;
   readerOpenMode: ReaderOpenMode;

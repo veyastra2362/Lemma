@@ -72,8 +72,15 @@ export function ReaderView() {
   const [mode, setMode] = useState<ViewMode>("side");
   const [hovered, setHovered] = useState<number | null>(null);
   const [speechReady, setSpeechReady] = useState(false);
+  /** 两个朗读按钮是否显示（设置里可关）。 */
+  const [speakOriginal, setSpeakOriginal] = useState(true);
+  const [speakTranslation, setSpeakTranslation] = useState(true);
   /** 跟读：正在朗读的词（全局序号），null 表示没在朗读。 */
   const [spokenWord, setSpokenWord] = useState<number | null>(null);
+  /** 是否正在朗读（含"读译文"，那种情况不逐词高亮）。 */
+  const [speaking, setSpeaking] = useState(false);
+  /** 正在读的是原文还是译文。 */
+  const [speakingSource, setSpeakingSource] = useState<"original" | "translation" | null>(null);
   const speakTimer = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,6 +104,8 @@ export function ReaderView() {
       speakTimer.current = null;
     }
     setSpokenWord(null);
+    setSpeaking(false);
+    setSpeakingSource(null);
     void ipc.stopSpeaking();
   }, []);
 
@@ -117,7 +126,10 @@ export function ReaderView() {
    * 这样"播放当前句"和"合成下一句"能重叠。
    */
   const startSpeaking = useCallback(
-    (text: string) => {
+    (text: string, source: "original" | "translation" = "original") => {
+      const highlight = source === "original";
+      setSpeaking(true);
+      setSpeakingSource(source);
       if (speakTimer.current !== null) {
         window.clearTimeout(speakTimer.current);
         speakTimer.current = null;
@@ -137,6 +149,8 @@ export function ReaderView() {
       const fail = (reason: unknown) => {
         stopped = true;
         setSpokenWord(null);
+        setSpeaking(false);
+        setSpeakingSource(null);
         void ipc.logFrontend("error", "reader speak failed: " + String(reason));
       };
 
@@ -167,6 +181,8 @@ export function ReaderView() {
         }
         if (index >= sentences.length) {
           setSpokenWord(null);
+          setSpeaking(false);
+          setSpeakingSource(null);
           speakTimer.current = null;
           return;
         }
@@ -180,7 +196,10 @@ export function ReaderView() {
               return;
             }
             void ipc.playAudio(result.path).catch(fail);
-            highlightSentence(sentences[current]!, result.durationSecs);
+            // 只有读原文时逐词高亮；读译文时译文那一栏不是逐词渲染的，高亮无从落点
+            if (highlight) {
+              highlightSentence(sentences[current]!, result.durationSecs);
+            }
 
             // 一边播一边把下一句合成好
             if (current + 1 < sentences.length) {
@@ -320,6 +339,13 @@ export function ReaderView() {
       .speechReady()
       .then(setSpeechReady)
       .catch(() => setSpeechReady(false));
+    void ipc
+      .getSettings()
+      .then((value) => {
+        setSpeakOriginal(value.speakOriginal);
+        setSpeakTranslation(value.speakTranslation);
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -530,6 +556,16 @@ export function ReaderView() {
   // 气泡内容与位置（hover 时才算，避免每次渲染都量布局）
   const bubble = hovered === null ? null : bubbleFor(hovered);
 
+  /** 译文全文（按块拼起来），供「朗读译文」使用。 */
+  const translationText = blocks
+    .map((block) => (block.status === "done" ? (block as { text: string }).text : ""))
+    .filter((text) => text.trim().length > 0)
+    .join(" ");
+
+  const speakAs = (source: "original" | "translation", text: string) => {
+    startSpeaking(text, source);
+  };
+
   return (
     <div
       className="flex h-full w-full flex-col overflow-hidden rounded-xl border text-[var(--hud-text)]"
@@ -561,12 +597,12 @@ export function ReaderView() {
             ))}
           </div>
         )}
-                {/* 与 HUD 一致：只要有文本就给朗读入口（英文也支持），不再只认中文 */}
-        {speechReady && (content?.text ?? "").trim().length > 0 && (
+                {/* 两个入口：原文 / 译文。译文串起来读，跟读高亮按对应文本推进。 */}
+        {speechReady && speakOriginal && (content?.text ?? "").trim().length > 0 && (
           <button
             type="button"
             onClick={() => {
-              if (spokenWord !== null) {
+              if (speaking) {
                 stopSpeaking();
               } else {
                 startSpeaking(content?.text ?? "");
@@ -578,7 +614,30 @@ export function ReaderView() {
                 : "border-white/12 text-[var(--hud-muted)] hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
             }`}
           >
-            {spokenWord !== null ? t("speakStop") : t("speakStart")}
+            {speakingSource === "original" && speaking
+              ? t("speakStop")
+              : t("speakOriginal")}
+          </button>
+        )}
+        {speechReady && speakTranslation && translationText.trim().length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              if (speakingSource === "translation" && speaking) {
+                stopSpeaking();
+              } else {
+                speakAs("translation", translationText);
+              }
+            }}
+            className={`ml-2 rounded border px-1.5 py-0.5 text-[11px] transition ${
+              speakingSource === "translation" && speaking
+                ? "border-[var(--hud-accent)] text-[var(--hud-accent)]"
+                : "border-white/12 text-[var(--hud-muted)] hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+            }`}
+          >
+            {speakingSource === "translation" && speaking
+              ? t("speakStop")
+              : t("speakTranslation")}
           </button>
         )}
         <span className="ml-auto text-[11px] text-[var(--hud-muted)]">

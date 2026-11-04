@@ -426,6 +426,35 @@ export function SettingsView() {
           </div>
         </section>
 
+        {/* ---- 朗读按钮 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionSpeakButtons")}
+          </h2>
+          <div className="space-y-1.5">
+            {[
+              { key: "speakOriginal" as const, label: t("settingsSpeakOriginal") },
+              { key: "speakTranslation" as const, label: t("settingsSpeakTranslation") },
+            ].map((row) => (
+              <label
+                key={row.key}
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 px-3 py-2"
+              >
+                <input
+                  type="checkbox"
+                  checked={settings?.[row.key] ?? true}
+                  onChange={(event) => {
+                    setError(null);
+                    apply({ [row.key]: event.target.checked });
+                  }}
+                  className="h-3.5 w-3.5 accent-[var(--hud-accent)]"
+                />
+                <span className="text-[12px]">{row.label}</span>
+              </label>
+            ))}
+          </div>
+        </section>
+
         {/* ---- 截图识别 ---- */}
         <section className="mt-5">
           <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">

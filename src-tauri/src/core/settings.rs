@@ -106,6 +106,14 @@ pub struct Settings {
     /// 朗读语速（Kokoro 的 speed 参数，1.0 为原速）。
     #[serde(default = "default_speech_speed")]
     pub speech_speed: f32,
+    /// 卡片上是否显示「朗读原文」。
+    #[serde(default = "default_true")]
+    pub speak_original: bool,
+    /// 卡片上是否显示「朗读译文」。
+    ///
+    /// 典型用法：读英文原文时想听中文译文；或反过来检查译文读起来顺不顺。
+    #[serde(default = "default_true")]
+    pub speak_translation: bool,
     /// 截图识别是否注册热键。托盘菜单始终可用，这里只管热键。
     #[serde(default = "default_true")]
     pub ocr_hotkey_enabled: bool,
@@ -188,6 +196,8 @@ impl Default for Settings {
             hud_max_height: default_hud_max_height(),
             show_hints: true,
             speech_speed: default_speech_speed(),
+            speak_original: true,
+            speak_translation: true,
             ocr_hotkey_enabled: true,
             ocr_hotkey: default_ocr_hotkey(),
             reader_open_mode: default_reader_mode(),
