@@ -70,11 +70,14 @@ function CardView({
   sections,
   onWord,
   collapsed,
+  onOpenReader,
 }: {
   card: Card;
   sections: CardSections | null;
   onWord: (word: string) => void;
   collapsed: boolean;
+  /** 为 null 表示双栏功能关闭，不显示入口。 */
+  onOpenReader: ((text: string) => void) | null;
 }) {
   const entry = card.entry;
 
@@ -102,11 +105,23 @@ function CardView({
             {card.original}
           </p>
         )}
-        <p className="mt-1 font-mono text-[10px] text-[var(--hud-muted)]/70">
-          {card.elapsedMs !== null && `${card.source ?? ""} · ${card.elapsedMs.toFixed(0)}ms`}
-          {translation.status === "done" &&
-            ` · ${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
-        </p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="font-mono text-[10px] text-[var(--hud-muted)]/70">
+            {card.elapsedMs !== null &&
+              `${card.source ?? ""} · ${card.elapsedMs.toFixed(0)}ms`}
+            {translation.status === "done" &&
+              ` · ${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
+          </p>
+          {onOpenReader && (
+            <button
+              type="button"
+              onClick={() => onOpenReader(card.original as string)}
+              className="ml-auto shrink-0 rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+            >
+              {t("readerOpen")}
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -304,6 +319,15 @@ export function ShellView() {
       });
   }, [rootCard, setTranslation]);
 
+  const openReader = (text: string) => {
+    if (!isTauri()) {
+      return;
+    }
+    void ipc
+      .openReader(text, capture?.app ?? "")
+      .catch(() => undefined);
+  };
+
   const openWord = (word: string) => {
     if (!isTauri()) {
       return;
@@ -388,6 +412,9 @@ export function ShellView() {
                 sections={settings?.cardSections ?? null}
                 onWord={openWord}
                 collapsed={index < mounted.length - 1}
+                onOpenReader={
+                  settings?.readerOpenMode === "hud" ? openReader : null
+                }
               />
             ))}
           </>

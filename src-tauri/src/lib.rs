@@ -63,6 +63,9 @@ pub fn run() {
             commands::close_settings,
             commands::lookup_word,
             commands::translate_text,
+            commands::open_reader,
+            commands::reader_content,
+            commands::close_reader,
             commands::resize_hud,
             commands::report_first_paint,
         ])

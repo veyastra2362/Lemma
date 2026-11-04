@@ -261,6 +261,62 @@ fn wire_settings_close<R: Runtime>(window: &WebviewWindow<R>) {
 /// 注意这里必须分两步：先 `window.show()` 让宿主窗口出来，再显式给
 /// WebView 控制器同步一次尺寸并 `webview.show()`。只做前者时，之前被隐藏
 /// 过或尺寸为 0 的 WebView2 会在透明客户区外面留一圈可见边框。
+pub const READER_LABEL: &str = "reader";
+
+/// 显示双栏窗口。与设置窗口同样的两步显示 + 懒创建。
+pub fn present_reader<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let window = ensure_window(app, READER_LABEL)?;
+    wire_reader_close(&window);
+
+    window.unminimize().map_err(|e| e.to_string())?;
+    window.show().map_err(|e| e.to_string())?;
+
+    let size = window.inner_size().map_err(|e| e.to_string())?;
+    if size.width > 0 && size.height > 0 {
+        let webview: &tauri::Webview<R> = window.as_ref();
+        webview.set_size(size).map_err(|e| e.to_string())?;
+        webview.show().map_err(|e| e.to_string())?;
+    }
+
+    PlatformWindow::new(window.clone()).force_show();
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 从任意线程打开双栏窗口。
+pub fn present_reader_on_main<R: Runtime>(app: &AppHandle<R>) {
+    let runner = app.clone();
+    let inner = app.clone();
+    let _ = runner.run_on_main_thread(move || {
+        if let Err(error) = present_reader(&inner) {
+            logs::line(format!("reader present failed: {error}"));
+        }
+    });
+}
+
+fn wire_reader_close<R: Runtime>(window: &WebviewWindow<R>) {
+    static WIRED: AtomicBool = AtomicBool::new(false);
+    if WIRED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let win = window.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = win.hide();
+            PlatformWindow::new(win.clone()).force_hide();
+        }
+    });
+}
+
+/// 关掉双栏窗口。
+pub fn close_reader<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(READER_LABEL) {
+        let _ = window.hide();
+        PlatformWindow::new(window).force_hide();
+    }
+}
+
 /// 关掉设置窗口（只隐藏，不退出进程）。
 pub fn close_settings<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(SETTINGS_LABEL) {

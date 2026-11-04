@@ -57,11 +57,11 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 
 ## 不变式（改动了会出隐蔽故障）
 
-1. **`tauri.conf.json` 必须保留 `shell` / `settings` / `ocr-region` 三个窗口声明**。
-   三个窗口共用同一份前端产物，靠 `index.html#/xxx` hash 路由区分；降级成纯动态
+1. **`tauri.conf.json` 必须保留 `shell` / `settings` / `ocr-region` / `reader` 四个窗口声明**。
+   四个窗口共用同一份前端产物，靠 `index.html#/xxx` hash 路由区分；降级成纯动态
    创建会破坏 WebView2 路由解析与透明透传。
-   其中 shell 启动即创建（要预热），settings / ocr-region 用 `"create": false` 懒创建——
-   三个窗口就是三个 WebView2 渲染进程，全建出来会多占约 130 MB 工作集（见 `docs/PERF.md`）。
+   其中 shell 启动即创建（要预热），settings / ocr-region / reader 用 `"create": false` 懒创建——
+   每个窗口就是一个 WebView2 渲染进程，全建出来会多占上百 MB 工作集（见 `docs/PERF.md`）。
 2. **Win32 与 Tauri 的可见性状态必须同时更新**：凡是调用 `force_hide`（`SW_HIDE`）
    隐藏的窗口，再显示时必须同时 `window.show()` + `force_show()` + `set_focus()`，
    只做一侧会出现「宿主显示了但 WebView 空白」或反之。
@@ -70,7 +70,7 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 4. **`single-instance` 必须是第一个注册的插件**，否则事件会被其它插件先吃掉。
 5. **HUD 的呼出路径上禁止创建窗口**。HUD 窗口启动时就建好并预热，
    之后只 `show` / `hide` / `set_position`。重建 WebView2 = 白屏闪烁 + 几十毫秒 + 内存泄漏。
-   （设置 / 框选窗口允许按需创建，它们不在「毫秒级呼出」的关键路径上。）
+   （设置 / 框选 / 双栏窗口允许按需创建，它们不在「毫秒级呼出」的关键路径上。）
 
 ## 性能测试的规矩
 

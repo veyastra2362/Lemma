@@ -35,6 +35,21 @@ pub enum CaptureMode {
     HoverOnly,
 }
 
+/// 双栏阅读窗口的打开方式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReaderOpenMode {
+    /// 完全关闭：HUD 不显示入口，热键也不注册。
+    Off,
+    /// 从 HUD 里点按钮打开（默认）。
+    Hud,
+    /// 用独立热键打开。
+    Hotkey,
+}
+
+/// 双栏窗口的默认热键（仅在 mode == Hotkey 时注册）。
+pub const DEFAULT_READER_HOTKEY: &str = "Alt+R";
+
 /// 卡片上显示哪些区块。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,6 +100,11 @@ pub struct Settings {
     /// 是否显示 HUD 底部那排快捷键提示。
     #[serde(default = "default_true")]
     pub show_hints: bool,
+    /// 双栏阅读窗口的打开方式。
+    #[serde(default = "default_reader_mode")]
+    pub reader_open_mode: ReaderOpenMode,
+    #[serde(default = "default_reader_hotkey")]
+    pub reader_hotkey: String,
     /// 翻译走哪个服务。
     #[serde(default = "default_provider")]
     pub translate_provider: ProviderKind,
@@ -119,6 +139,14 @@ fn default_provider() -> ProviderKind {
     ProviderKind::Google
 }
 
+fn default_reader_mode() -> ReaderOpenMode {
+    ReaderOpenMode::Hud
+}
+
+fn default_reader_hotkey() -> String {
+    DEFAULT_READER_HOTKEY.to_string()
+}
+
 fn default_target_lang() -> Lang {
     Lang::Zh
 }
@@ -139,6 +167,8 @@ impl Default for Settings {
             capture_mode: default_capture_mode(),
             hud_max_height: default_hud_max_height(),
             show_hints: true,
+            reader_open_mode: default_reader_mode(),
+            reader_hotkey: default_reader_hotkey(),
             translate_provider: default_provider(),
             target_lang: default_target_lang(),
             openai_base_url: default_base_url(),

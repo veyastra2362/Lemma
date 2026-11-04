@@ -5,6 +5,7 @@ import type {
   Capture,
   Entry,
   PaintSample,
+  ReaderContent,
   RuntimeStats,
   Settings,
   TranslateResult,
@@ -66,6 +67,13 @@ export const ipc = {
   resizeHud: (height: number) => invoke<void>("resize_hud", { height }),
   /** Deck 下探查词。未收录返回 null。 */
   lookupWord: (word: string) => invoke<Entry | null>("lookup_word", { word }),
+  /** 打开双栏窗口并显示这段文本。 */
+  openReader: (text: string, source: string) =>
+    invoke<void>("open_reader", { text, source }),
+  /** 双栏窗口拉取内容。 */
+  readerContent: () =>
+    withRetry("reader_content", () => invoke<ReaderContent | null>("reader_content")),
+  closeReader: () => invoke<void>("close_reader"),
   /** 翻译一段文本（走 Rust 的分级路由 + 缓存）。失败会 reject。 */
   translateText: (text: string) =>
     invoke<TranslateResult>("translate_text", { text }),

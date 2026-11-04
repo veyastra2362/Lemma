@@ -138,7 +138,8 @@ export function SettingsView() {
   const settings = useAppStore((state) => state.settings);
   const setSettings = useAppStore((state) => state.setSettings);
 
-  const [recording, setRecording] = useState(false);
+  const [recordingTarget, setRecordingTarget] = useState<null | "hud" | "reader">(null);
+  const recording = recordingTarget !== null;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -186,14 +187,14 @@ export function SettingsView() {
 
   // 录制期间用捕获阶段拦下按键，避免组合键被页面的其它处理器吃掉。
   useEffect(() => {
-    if (!recording) {
+    if (!recordingTarget) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
       if (event.key === "Escape") {
-        setRecording(false);
+        setRecordingTarget(null);
         return;
       }
       const combo = formatHotkey(event);
@@ -201,12 +202,17 @@ export function SettingsView() {
         setError(t("settingsHotkeyRule"));
         return;
       }
-      setRecording(false);
-      apply({ trigger: "hotkey", hotkey: combo });
+      if (recordingTarget === "reader") {
+        setRecordingTarget(null);
+        apply({ readerHotkey: combo });
+      } else {
+        setRecordingTarget(null);
+        apply({ trigger: "hotkey", hotkey: combo });
+      }
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [recording, apply]);
+  }, [recordingTarget, apply]);
 
   const startup = stats ? `${stats.startup_ms.toFixed(0)} ms` : t("noData");
   const presents = stats ? String(stats.hud_presents) : t("noData");
@@ -279,11 +285,13 @@ export function SettingsView() {
                   type="button"
                   onClick={() => {
                     setError(null);
-                    setRecording((value) => !value);
+                    setRecordingTarget(recordingTarget === "hud" ? null : "hud");
                   }}
                   className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
                 >
-                  {recording ? t("settingsHotkeyRecording") : t("settingsHotkeyRecord")}
+                  {recordingTarget === "hud"
+                    ? t("settingsHotkeyRecording")
+                    : t("settingsHotkeyRecord")}
                 </button>
               </div>
               <div className="mt-1 text-[11px] text-[var(--hud-muted)]">
@@ -308,6 +316,55 @@ export function SettingsView() {
                 onClick={() => apply({ captureMode: option.value })}
               />
             ))}
+          </div>
+        </section>
+
+        {/* ---- 双栏对照窗口 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionReader")}
+          </h2>
+          <div className="space-y-1.5">
+            <Radio
+              active={settings?.readerOpenMode === "off"}
+              label={t("settingsReaderOff")}
+              hint={t("settingsReaderOffHint")}
+              onClick={() => apply({ readerOpenMode: "off" })}
+            />
+            <Radio
+              active={settings?.readerOpenMode === "hud"}
+              label={t("settingsReaderHud")}
+              hint={t("settingsReaderHudHint")}
+              onClick={() => apply({ readerOpenMode: "hud" })}
+            />
+            <Radio
+              active={settings?.readerOpenMode === "hotkey"}
+              label={t("settingsReaderHotkey")}
+              hint={t("settingsReaderHotkeyHint")}
+              onClick={() => apply({ readerOpenMode: "hotkey" })}
+            />
+            {settings?.readerOpenMode === "hotkey" && (
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2">
+                <span className="text-[12px] text-[var(--hud-muted)]">
+                  {t("settingsReaderHotkeyLabel")}
+                </span>
+                <span className="ml-auto font-mono text-[12px] text-[var(--hud-accent)]">
+                  {settings.readerHotkey}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setRecordingTarget(recordingTarget === "reader" ? null : "reader");
+                  }}
+                  className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
+                >
+                  {recordingTarget === "reader"
+                    ? t("settingsHotkeyRecording")
+                    : t("settingsHotkeyRecord")}
+                </button>
+              </div>
+            )}
           </div>
         </section>
 

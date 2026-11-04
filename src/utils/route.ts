@@ -1,6 +1,6 @@
-export type Route = "shell" | "settings" | "ocr-region";
+export type Route = "shell" | "settings" | "ocr-region" | "reader";
 
-const ROUTES: readonly Route[] = ["shell", "settings", "ocr-region"];
+const ROUTES: readonly Route[] = ["shell", "settings", "ocr-region", "reader"];
 
 /**
  * 三个窗口共用同一个前端产物，靠 hash 区分：

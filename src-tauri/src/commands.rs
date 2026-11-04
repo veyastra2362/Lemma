@@ -94,6 +94,32 @@ pub fn close_settings(app: AppHandle) {
     crate::core::shell::close_settings(&app);
 }
 
+/// 打开双栏窗口并显示这段文本（HUD 的「双栏」按钮走这里）。
+#[tauri::command]
+pub fn open_reader(app: AppHandle, text: String, source: String) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Err("没有可对照的文本".to_string());
+    }
+    crate::core::reader::set_payload(crate::core::reader::ReaderPayload { text, app: source });
+    crate::core::shell::present_reader(&app)
+}
+
+/// 双栏窗口启动后拉内容。切块在 Rust 侧做（已有单测），前端只管渲染与译文。
+#[tauri::command]
+pub fn reader_content() -> Option<crate::core::reader::ReaderContent> {
+    let payload = crate::core::reader::payload()?;
+    Some(crate::core::reader::ReaderContent {
+        blocks: crate::core::reader::split_blocks(&payload.text),
+        text: payload.text,
+        app: payload.app,
+    })
+}
+
+#[tauri::command]
+pub fn close_reader(app: AppHandle) {
+    crate::core::shell::close_reader(&app);
+}
+
 /// 翻译一段文本。走 `core::translate` 的分级路由 + 缓存。
 ///
 /// 明确的 async 命令：网络往返 ~700 ms，不能阻塞 UI 线程。

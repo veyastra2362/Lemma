@@ -33,6 +33,16 @@ export type TranslateProvider = "google" | "openAi";
 /** 目标语言。 */
 export type TranslateLang = "zh" | "en";
 
+/** 双栏窗口的打开方式。 */
+export type ReaderOpenMode = "off" | "hud" | "hotkey";
+
+/** 双栏窗口的内容（块已由 Rust 侧切好）。 */
+export interface ReaderContent {
+  text: string;
+  app: string;
+  blocks: string[];
+}
+
 export interface TranslateResult {
   text: string;
   provider: string;
@@ -51,6 +61,8 @@ export interface Settings {
   showHints: boolean;
   cardSections: CardSections;
   /** 翻译走哪个服务。 */
+  readerOpenMode: ReaderOpenMode;
+  readerHotkey: string;
   translateProvider: TranslateProvider;
   targetLang: TranslateLang;
   openaiBaseUrl: string;

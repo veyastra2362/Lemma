@@ -13,7 +13,8 @@ use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::core::double_tap::DoubleTap;
-use crate::core::settings::{SettingsStore, Trigger};
+use crate::core::reader::{self, ReaderPayload};
+use crate::core::settings::{ReaderOpenMode, SettingsStore, Trigger};
 use crate::core::{logs, selection, shell};
 use crate::platform;
 
@@ -52,6 +53,39 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let settings = app.state::<SettingsStore>().get();
     let manager = app.global_shortcut();
     manager.unregister_all().map_err(|e| e.to_string())?;
+
+    // 双栏热键独立于呼出热键，按自己的开关决定是否注册。
+    if settings.reader_open_mode == ReaderOpenMode::Hotkey {
+        if let Ok(reader_shortcut) = settings.reader_hotkey.parse::<Shortcut>() {
+            let mode = settings.capture_mode;
+            let registered = manager.on_shortcut(reader_shortcut, move |app, _shortcut, event| {
+                if event.state != ShortcutState::Pressed {
+                    return;
+                }
+                let capture = selection::capture(mode);
+                if capture.text.trim().is_empty() {
+                    return;
+                }
+                reader::set_payload(ReaderPayload {
+                    text: capture.text,
+                    app: capture.app,
+                });
+                shell::present_reader_on_main(app);
+            });
+            match registered {
+                Ok(()) => logs::line(format!("trigger reader hotkey {}", settings.reader_hotkey)),
+                Err(error) => logs::line(format!(
+                    "reader hotkey failed（{}）：{error}",
+                    settings.reader_hotkey
+                )),
+            }
+        } else {
+            logs::line(format!(
+                "reader hotkey 格式不对：{}",
+                settings.reader_hotkey
+            ));
+        }
+    }
 
     if settings.trigger != Trigger::Hotkey {
         logs::line("trigger mode doubleControl");
