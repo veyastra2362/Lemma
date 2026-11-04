@@ -41,6 +41,7 @@ export function ReaderView() {
   const [speechReady, setSpeechReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const imageBoxRef = useRef<HTMLDivElement>(null);
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
   const syncing = useRef(false);
@@ -291,6 +292,47 @@ export function ReaderView() {
     ? `data:image/png;base64,${(content.image as ReaderImage).pngBase64}`
     : null;
 
+  /**
+   * 气泡位置：优先放在框**上方**，上方放不下就翻到下方，再左右夹紧在图片内。
+   *
+   * 为什么不直接盖在原框上：译文通常比原文长，盖住就等于把原文遮了；
+   * 浮在旁边既能同时看到原文与译文，也不会像原位格子那样被裁掉。
+   */
+  const bubbleFor = (index: number) => {
+    const image = content?.image;
+    const box = imageBoxRef.current;
+    if (!image || !box) {
+      return null;
+    }
+    const block = content!.imageBlocks[index];
+    if (!block) {
+      return null;
+    }
+    const rect = box.getBoundingClientRect();
+    // 用"图片坐标 → 容器内像素"的换算，和 quadStyle 保持一致
+    const xs = block.quad.map(([x]) => x);
+    const ys = block.quad.map(([, y]) => y);
+    const px = (Math.min(...xs) / image.width) * rect.width;
+    const py = (Math.min(...ys) / image.height) * rect.height;
+    const ph = ((Math.max(...ys) - Math.min(...ys)) / image.height) * rect.height;
+
+    const width = Math.min(320, rect.width * 0.9);
+    const left = Math.max(0, Math.min(px, rect.width - width));
+    const estimated = 84;
+    const above = py - estimated - 6;
+    const top = above >= 0 ? above : py + ph + 6;
+
+    return {
+      left: `${left}px`,
+      top: `${Math.max(0, top)}px`,
+      text:
+        blocks[index]?.status === "done"
+          ? (blocks[index] as { text: string }).text
+          : t("translateLoading"),
+      original: block.text,
+    };
+  };
+
   /** 把图片坐标换成 CSS 百分比，覆盖层才能跟着缩放。 */
   const quadStyle = (block: ReaderBlock) => {
     const image = content?.image;
@@ -305,6 +347,9 @@ export function ReaderView() {
     const height = ((Math.max(...ys) - Math.min(...ys)) / image.height) * 100;
     return { left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` };
   };
+
+  // 气泡内容与位置（hover 时才算，避免每次渲染都量布局）
+  const bubble = hovered === null ? null : bubbleFor(hovered);
 
   return (
     <div
@@ -377,23 +422,54 @@ export function ReaderView() {
       {/* ---------- 覆盖模式：译文贴在原图框上 ---------- */}
       {isImage && mode === "overlay" && imageSrc && (
         <div className="min-h-0 flex-1 overflow-auto p-4">
-          <div className="relative mx-auto w-fit" style={{ maxWidth: content!.image!.width }}>
-            <img src={imageSrc} alt="" className="w-full rounded-lg opacity-60" />
+          <div
+            ref={imageBoxRef}
+            className="relative mx-auto w-fit"
+            // 小截图放大到 2 倍：框按百分比定位，放大不会错位；
+            // 否则 320px 的截图在 1200px 的窗口里，十几个框会挤成一团。
+            // 用 width 而不是 maxWidth：父容器是 w-fit，maxWidth 撑不大它。
+            style={{ width: content!.image!.width * 2, maxWidth: "100%" }}
+          >
+            <img src={imageSrc} alt="" className="w-full rounded-lg opacity-70" />
+
+            {/* 原位格子：只放精简译文，不裁字也不盖住邻框（overflow 里 line-clamp 兜底） */}
             {content!.imageBlocks.map((block, index) => (
-              <div
+              <button
+                type="button"
                 key={index}
                 onMouseEnter={() => setHovered(index)}
+                onFocus={() => setHovered(index)}
                 onMouseLeave={() => setHovered(null)}
-                className={`absolute overflow-hidden rounded border px-1 ${
+                onBlur={() => setHovered(null)}
+                className={`absolute overflow-hidden rounded border px-1 text-left transition ${
                   hovered === index
-                    ? "border-[var(--hud-accent)] bg-[var(--hud-surface)]/95"
-                    : "border-white/10 bg-[var(--hud-surface)]/85"
+                    ? "z-10 border-[var(--hud-accent)] bg-[var(--hud-surface)]/95"
+                    : "border-white/10 bg-[var(--hud-surface)]/80"
                 }`}
                 style={quadStyle(block)}
               >
-                {renderTranslation(index, true)}
-              </div>
+                <span className="line-clamp-2 text-[11px] leading-[1.3]">
+                  {blocks[index]?.status === "done"
+                    ? (blocks[index] as { text: string }).text
+                    : blocks[index]?.status === "loading"
+                      ? t("translateLoading")
+                      : "—"}
+                </span>
+              </button>
             ))}
+
+            {/* 气泡：hover 时在本框上方或下方弹出**完整**译文，位置按剩余空间自动翻 */}
+            {hovered !== null && bubble && (
+              <div
+                className="pointer-events-none absolute z-20 w-[min(320px,90%)] rounded-lg border border-[var(--hud-accent)]/60 bg-[var(--hud-surface)]/98 px-2 py-1.5 shadow-lg"
+                style={{ left: bubble.left, top: bubble.top }}
+              >
+                <p className="text-[12px] leading-[1.5]">{bubble.text}</p>
+                <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-[var(--hud-muted)]">
+                  {bubble.original}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -413,7 +489,10 @@ export function ReaderView() {
                   src={imageSrc}
                   alt=""
                   className="w-full rounded-lg"
-                  style={{ maxWidth: content!.image!.width }}
+                  // 小截图放大到 2 倍：框按百分比定位，放大不会错位；
+            // 否则 320px 的截图在 1200px 的窗口里，十几个框会挤成一团。
+            // 用 width 而不是 maxWidth：父容器是 w-fit，maxWidth 撑不大它。
+            style={{ width: content!.image!.width * 2, maxWidth: "100%" }}
                 />
                 {content!.imageBlocks.map((block, index) => (
                   <p
