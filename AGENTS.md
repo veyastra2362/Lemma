@@ -58,7 +58,7 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 8. **前端不要用 `catch(() => undefined)` 吞错误**：GUI 的 console 没人看得到，一吞就彻底失联。
    用 `commands::log_frontend` 把错误写进 Rust 日志（这次就是靠它才定位到死锁）。
 9. **WebView2 的 IPC 通道建立和页面模块执行有竞争**：`__INTERNALS__` 已存在时
-   `invoke` 仍可能第一次被拒。前端 IPC 调用统一走 `withRetry`（见 `src/lib/ipc.ts`）。   `invoke` 仍可能第一次被拒。前端 IPC 调用统一走 `withRetry`（见 `src/lib/ipc.ts`）。
+   `invoke` 仍可能第一次被拒。前端 IPC 调用统一走 `withRetry`（见 `src/lib/ipc.ts`）。
 
 ## 不变式（改动了会出隐蔽故障）
 
