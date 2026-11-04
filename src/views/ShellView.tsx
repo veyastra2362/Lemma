@@ -1,9 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useHudLifecycle } from "../hooks/useHudLifecycle";
 import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t, tDeckCollapsed } from "../i18n";
-import { ipc, isTauri } from "../lib/ipc";
+import { ipc, isTauri, onReaderSmoke } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
 import { shouldTranslate, useDeckStore, type Card } from "../store/useDeckStore";
 import type { CardSections, Settings } from "../types";
@@ -255,6 +255,7 @@ export function ShellView() {
   const push = useDeckStore((state) => state.push);
   const jumpTo = useDeckStore((state) => state.jumpTo);
   const setTranslation = useDeckStore((state) => state.setTranslation);
+  const [readerError, setReaderError] = useState<string | null>(null);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const lastRequested = useRef(0);
@@ -288,6 +289,32 @@ export function ShellView() {
     observer.observe(element);
     return () => observer.disconnect();
   }, [cards, settings, showHints]);
+
+  // 诊断用：Rust 侧发起的 IPC 冒烟，走与点击按钮完全相同的路径。
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+    void onReaderSmoke((text) => {
+      void ipc.logFrontend("info", "smoke event received, chars=" + text.length);
+      void ipc
+        .openReader(text, "smoke-ipc")
+        .then(() => {
+          setReaderError(null);
+          void ipc.logFrontend("info", "smoke openReader ok");
+        })
+        .catch((reason: unknown) => {
+          const message = reason instanceof Error ? reason.message : String(reason);
+          setReaderError(message);
+          void ipc.logFrontend("error", "smoke openReader failed: " + message);
+        });
+    }).catch((reason: unknown) => {
+      void ipc.logFrontend(
+        "error",
+        "listen(reader://smoke) failed: " + String(reason),
+      );
+    });
+  }, []);
 
   // 句卡片：一旦出现就去翻译（异步，不挡 HUD 首帧）。
   //
@@ -323,9 +350,13 @@ export function ShellView() {
     if (!isTauri()) {
       return;
     }
+    // 失败必须让用户看见：这个功能之前就是被 .catch(() => undefined) 悄悄吞掉的。
     void ipc
       .openReader(text, capture?.app ?? "")
-      .catch(() => undefined);
+      .then(() => setReaderError(null))
+      .catch((reason: unknown) => {
+        setReaderError(reason instanceof Error ? reason.message : String(reason));
+      });
   };
 
   const openWord = (word: string) => {
@@ -419,6 +450,11 @@ export function ShellView() {
             ))}
           </>
         )}
+          {readerError && (
+            <p className="mt-1 rounded border border-red-400/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-300">
+              {t("readerFailed")}：{readerError}
+            </p>
+          )}
         </div>
       </main>
 

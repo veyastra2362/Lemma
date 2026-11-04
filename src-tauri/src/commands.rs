@@ -19,9 +19,19 @@ pub fn hud_toggle(app: AppHandle) {
     crate::core::shell::toggle(&app);
 }
 
+/// 同 `open_reader`：会创建窗口，必须 async。
 #[tauri::command]
-pub fn open_settings(app: AppHandle) -> Result<(), String> {
+pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     crate::core::shell::present_settings(&app)
+}
+
+/// 前端把日志写进 Rust 的日志文件。
+///
+/// GUI 的 console 我这边看不到，而 `catch(() => undefined)` 一吞，问题就彻底消失了。
+/// 这个命令让前端也能留下可查的痕迹。
+#[tauri::command]
+pub fn log_frontend(level: String, message: String) {
+    crate::core::logs::line(format!("[frontend:{level}] {message}"));
 }
 
 /// 前端某个视图挂载完成。用于区分「窗口没出来」和「前端没跑起来」，
@@ -95,13 +105,27 @@ pub fn close_settings(app: AppHandle) {
 }
 
 /// 打开双栏窗口并显示这段文本（HUD 的「双栏」按钮走这里）。
+/// 打开双栏窗口。
+///
+/// **必须是 async**：同步命令在 Tauri 里跑在主线程上，而这里要创建新窗口——
+/// 创建窗口需要事件循环转起来，主线程正被这条命令占着，于是直接死锁
+/// （表现为 IPC 永不返回、HUD 失去响应、Esc 关不掉）。
 #[tauri::command]
-pub fn open_reader(app: AppHandle, text: String, source: String) -> Result<(), String> {
+pub async fn open_reader(app: AppHandle, text: String, source: String) -> Result<(), String> {
     if text.trim().is_empty() {
         return Err("没有可对照的文本".to_string());
     }
     crate::core::reader::set_payload(crate::core::reader::ReaderPayload { text, app: source });
-    crate::core::shell::present_reader(&app)
+    match crate::core::shell::present_reader(&app) {
+        Ok(()) => {
+            crate::core::logs::line("reader opened");
+            Ok(())
+        }
+        Err(error) => {
+            crate::core::logs::line(format!("open_reader failed: {error}"));
+            Err(error)
+        }
+    }
 }
 
 /// 双栏窗口启动后拉内容。切块在 Rust 侧做（已有单测），前端只管渲染与译文。

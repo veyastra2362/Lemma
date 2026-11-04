@@ -32,6 +32,7 @@ const zhCN = {
   readerTitle: "双栏对照",
   readerBlocks: "段",
   readerOpen: "双栏",
+  readerFailed: "双栏打开失败",
   settingsSectionReader: "双栏对照窗口",
   settingsReaderOff: "关闭",
   settingsReaderOffHint: "不显示入口，也不占用热键。",

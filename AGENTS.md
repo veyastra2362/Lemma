@@ -52,8 +52,13 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
    生成的权限清单都记着**绝对路径**。搬完目录会看到 `pnpm typecheck` 崩栈、`tauri build` 报
    `系统找不到指定的路径`。处理办法：`CI=true pnpm install`（**不加 `CI=true` 会因无 TTY
    拒绝删除 `node_modules`**）+ `cargo clean` 后重建。
-7. **WebView2 的 IPC 通道建立和页面模块执行有竞争**：`__TAURI_INTERNALS__` 已存在时
-   `invoke` 仍可能第一次被拒。前端 IPC 调用统一走 `withRetry`（见 `src/lib/ipc.ts`）。
+7. **任何会创建窗口的命令必须是 `async`**：Tauri 的同步命令跑在主线程上，而创建窗口要等事件循环——
+   主线程被命令占着就互等成**死锁**，表现为 IPC 永不返回、整个 HUD 失去响应（Esc 都关不掉）。
+   见 `.agents/notes/implemented/bug-fix/2026-11-04-sync-command-window-deadlock.md`。
+8. **前端不要用 `catch(() => undefined)` 吞错误**：GUI 的 console 没人看得到，一吞就彻底失联。
+   用 `commands::log_frontend` 把错误写进 Rust 日志（这次就是靠它才定位到死锁）。
+9. **WebView2 的 IPC 通道建立和页面模块执行有竞争**：`__INTERNALS__` 已存在时
+   `invoke` 仍可能第一次被拒。前端 IPC 调用统一走 `withRetry`（见 `src/lib/ipc.ts`）。   `invoke` 仍可能第一次被拒。前端 IPC 调用统一走 `withRetry`（见 `src/lib/ipc.ts`）。
 
 ## 不变式（改动了会出隐蔽故障）
 

@@ -3,7 +3,7 @@ pub mod core;
 pub mod platform;
 pub mod probe;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use crate::core::settings::SettingsStore;
 use crate::core::{logs, perf::Perf, shell, tray, trigger};
@@ -56,6 +56,7 @@ pub fn run() {
             commands::hud_toggle,
             commands::open_settings,
             commands::frontend_ready,
+            commands::log_frontend,
             commands::perf_stats,
             commands::last_capture,
             commands::get_settings,
@@ -128,6 +129,41 @@ pub fn run() {
                 PlatformWindow::new(window).configure_transparency();
             }
             shell::prewarm(handle);
+
+            // 诊断：确认编译进二进制的配置里到底有哪些窗口。
+            let labels: Vec<&str> = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .map(|window| window.label.as_str())
+                .collect();
+            logs::line(format!("config windows: {labels:?}"));
+
+            // IPC 冒烟：延迟 2.5s 后让**前端**去调 open_reader，验证 JS→Rust 那条路。
+            // 用法：$env:LEMMA_READER_SMOKE_IPC="一些文本"; lemma.exe
+            if let Ok(text) = std::env::var("LEMMA_READER_SMOKE_IPC") {
+                let handle = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
+                    if let Some(window) = handle.get_webview_window(shell::HUD_LABEL) {
+                        let _ = window.emit("reader://smoke", text);
+                    }
+                });
+            }
+
+            // 冒烟入口：带上文本启动即可直接开双栏，不依赖窗口焦点。
+            // 用法：$env:LEMMA_READER_SMOKE="some text"; lemma.exe
+            if let Ok(text) = std::env::var("LEMMA_READER_SMOKE") {
+                crate::core::reader::set_payload(crate::core::reader::ReaderPayload {
+                    text,
+                    app: "smoke".to_string(),
+                });
+                match shell::present_reader(handle) {
+                    Ok(()) => logs::line("reader opened (smoke)"),
+                    Err(error) => logs::line(format!("reader smoke failed: {error}")),
+                }
+            }
 
             logs::line(format!(
                 "startup tray-ready {:.1}ms",

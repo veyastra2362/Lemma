@@ -57,6 +57,9 @@ export const ipc = {
       invoke<void>("frontend_ready", { label }),
     ),
   perfStats: () => invoke<RuntimeStats>("perf_stats"),
+  /** 把前端日志写进 Rust 的日志文件（GUI 的 console 我看不到）。 */
+  logFrontend: (level: "error" | "warn" | "info", message: string) =>
+    invoke<void>("log_frontend", { level, message }),
   lastCapture: () =>
     withRetry("last_capture", () => invoke<Capture | null>("last_capture")),
   getSettings: () =>
@@ -87,6 +90,13 @@ export function onHudPresented(
   return withRetry("listen(hud://presented)", () =>
     listen<number>("hud://presented", (event) => handler(event.payload)),
   );
+}
+
+/** 仅用于诊断：Rust 侧发起的 IPC 冒烟（`LEMMA_READER_SMOKE_IPC`）。 */
+export function onReaderSmoke(
+  handler: (text: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("reader://smoke", (event) => handler(event.payload));
 }
 
 /** 监听设置变更（设置窗口改了设置后，HUD 靠这个同步）。 */

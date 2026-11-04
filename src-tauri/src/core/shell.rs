@@ -265,7 +265,24 @@ pub const READER_LABEL: &str = "reader";
 
 /// 显示双栏窗口。与设置窗口同样的两步显示 + 懒创建。
 pub fn present_reader<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let window = ensure_window(app, READER_LABEL)?;
+    // 先按配置建；配置因为任何原因拿不到（编译进二进制的 conf 与代码不同步等）时，
+    // 用硬编码参数兜底——双栏是用户点出来的功能，不能因为一个配置项就静默失败。
+    let window = ensure_window(app, READER_LABEL).or_else(|error| {
+        logs::line(format!("reader from config failed: {error}，改用兜底参数"));
+        tauri::WebviewWindowBuilder::new(
+            app,
+            READER_LABEL,
+            tauri::WebviewUrl::App("index.html#/reader".into()),
+        )
+        .title("Lemma 双栏")
+        .inner_size(1020.0, 700.0)
+        .min_inner_size(720.0, 420.0)
+        .transparent(true)
+        .decorations(false)
+        .center()
+        .build()
+        .map_err(|fallback| format!("{error}；兜底也失败：{fallback}"))
+    })?;
     wire_reader_close(&window);
 
     window.unminimize().map_err(|e| e.to_string())?;
