@@ -324,6 +324,7 @@ fn import_cedict(args: &[String]) {
 
     let mut skipped = 0u64;
     let mut total = 0u64;
+    let mut words: Vec<String> = Vec::new();
     let entries = content.lines().filter_map(|line| {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -331,6 +332,7 @@ fn import_cedict(args: &[String]) {
         }
         match parse_cedict_line(line) {
             Some((word, entry)) => {
+                words.push(word.clone());
                 total += 1;
                 if total.is_multiple_of(50_000) {
                     eprintln!("  已解析 {total} 条");
@@ -344,7 +346,12 @@ fn import_cedict(args: &[String]) {
         }
     });
 
-    match store.insert_zh_batch(entries, 20_000) {
+    let result = store.insert_zh_batch(entries, 20_000);
+    // 必须先 drop 掉词库再写侧文件：redb 在 Database 关闭时才落盘，
+    // 否则词库 mtime 会晚于侧文件，下次加载的新鲜度校验会失败、白走一遍 redb。
+    drop(store);
+
+    match result {
         Ok(written) => {
             println!(
                 "导入完成：{written} 条中文词条，跳过 {skipped} 条，用时 {:.1}s",
@@ -352,6 +359,11 @@ fn import_cedict(args: &[String]) {
             );
             if let Ok(meta) = std::fs::metadata(&out) {
                 println!("词库大小：{:.1} MB", meta.len() as f64 / (1024.0 * 1024.0));
+            }
+            // 另存一份纯词表：分词器加载时顺序读它，不遍历 redb 中文表（省约 23 MB 工作集）。
+            if let Some(words_path) = paths::zh_words_path() {
+                crate::core::segment::write_side_file(&words_path, &words);
+                println!("词表侧文件：{}", words_path.display());
             }
         }
         Err(error) => eprintln!("导入失败：{error}"),

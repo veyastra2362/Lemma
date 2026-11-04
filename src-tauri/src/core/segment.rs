@@ -186,8 +186,8 @@ static GLOBAL: std::sync::OnceLock<Option<Segmenter>> = std::sync::OnceLock::new
 pub fn global() -> Option<&'static Segmenter> {
     GLOBAL
         .get_or_init(|| {
-            let store = crate::core::dict::global()?;
-            let words = match store.zh_words() {
+            let started = std::time::Instant::now();
+            let words = match load_words() {
                 Ok(words) => words,
                 Err(error) => {
                     crate::core::logs::line(format!("segmenter load failed: {error}"));
@@ -199,13 +199,69 @@ pub fn global() -> Option<&'static Segmenter> {
             }
             let segmenter = Segmenter::new(words);
             crate::core::logs::line(format!(
-                "segmenter ready words={} maxLen={}",
+                "segmenter ready words={} maxLen={} load={:.0}ms",
                 segmenter.len(),
-                segmenter.max_len()
+                segmenter.max_len(),
+                started.elapsed().as_secs_f64() * 1000.0
             ));
             Some(segmenter)
         })
         .as_ref()
+}
+
+/// 读词表：优先侧文件（快、不碰 redb 页），缺失或过期则从词库重建并补写。
+fn load_words() -> Result<Vec<String>, String> {
+    let words_path = crate::core::paths::zh_words_path();
+    let dict_path = crate::core::paths::dict_path();
+
+    if let (Some(words_path), Some(dict_path)) = (&words_path, &dict_path)
+        && words_path.exists()
+        && is_fresh(words_path, dict_path)
+        && let Ok(content) = std::fs::read_to_string(words_path)
+    {
+        let words: Vec<String> = content.lines().map(str::to_string).collect();
+        if !words.is_empty() {
+            return Ok(words);
+        }
+    }
+
+    // 回退：从词库读，并补写侧文件供下次使用。
+    let store = crate::core::dict::open_default()?;
+    let words = store.zh_words()?;
+    if let Some(words_path) = words_path {
+        write_side_file(&words_path, &words);
+    }
+    Ok(words)
+}
+
+/// 侧文件不能比词库旧——否则重新导入过 CC-CEDICT 却还在用旧词表。
+fn is_fresh(side: &std::path::Path, dict: &std::path::Path) -> bool {
+    let (Ok(side_meta), Ok(dict_meta)) = (side.metadata(), dict.metadata()) else {
+        return false;
+    };
+    match (side_meta.modified(), dict_meta.modified()) {
+        // 允许 1 秒误差：写入顺序上侧文件在词库之后，但不该更旧。
+        (Ok(side_time), Ok(dict_time)) => {
+            side_time + std::time::Duration::from_secs(1) >= dict_time
+        }
+        _ => true,
+    }
+}
+
+/// 写侧文件（排序去重，每行一词）。
+pub fn write_side_file(path: &std::path::Path, words: &[String]) {
+    let mut sorted: Vec<&str> = words.iter().map(String::as_str).collect();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let mut content = sorted.join("\n");
+    content.push('\n');
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::write(path, content) {
+        Ok(()) => crate::core::logs::line(format!("zh words side file written: {}", sorted.len())),
+        Err(error) => crate::core::logs::line(format!("zh words side file failed: {error}")),
+    }
 }
 
 #[cfg(test)]

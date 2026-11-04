@@ -29,6 +29,14 @@ pub fn legacy_app_data_dir() -> Option<PathBuf> {
     roaming_dir(LEGACY_IDENTIFIER)
 }
 
+/// 中文词表侧文件（每行一个词）。
+///
+/// 为什么单独存一份：分词器只需要词，不需要词条内容。遍历 redb 中文表会
+/// 把整张表的页都带进工作集（实测多占约 23 MB），顺序读这个 1.5 MB 的文件则不会。
+pub fn zh_words_path() -> Option<PathBuf> {
+    app_data_dir().map(|dir| dir.join("zh-words.txt"))
+}
+
 /// 词库文件路径。
 pub fn dict_path() -> Option<PathBuf> {
     app_data_dir().map(|dir| dir.join("dict.redb"))
