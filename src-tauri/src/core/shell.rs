@@ -279,7 +279,7 @@ pub fn present_region_select<R: Runtime>(app: &AppHandle<R>) -> Result<(), Strin
 
     for (index, monitor) in monitors.iter().enumerate() {
         let label = region_label(index);
-        let window = match ensure_window(app, &label) {
+        let window = match ensure_region_window(app, &label) {
             Ok(window) => {
                 wire_region_close(&window);
                 window
@@ -312,6 +312,39 @@ pub fn present_region_select<R: Runtime>(app: &AppHandle<R>) -> Result<(), Strin
         let _ = first.set_focus();
     }
     Ok(())
+}
+
+/// 拿到（必要时创建）第 `index` 块屏的框选窗口。
+///
+/// 只有主屏的 `ocr-region` 在 `tauri.conf.json` 里静态声明；副屏窗口是**动态创建**的，
+/// 复用同一份窗口配置、只换 label —— 所以不能用 `ensure_window`（它只查静态声明）。
+fn ensure_region_window<R: Runtime>(
+    app: &AppHandle<R>,
+    label: &str,
+) -> Result<WebviewWindow<R>, String> {
+    if let Some(window) = app.get_webview_window(label) {
+        return Ok(window);
+    }
+    if label == REGION_LABEL {
+        return ensure_window(app, REGION_LABEL);
+    }
+
+    // 不能只改 label 就丢给 from_config：实测动态窗口会落到 `about:blank`。
+    // 必须显式给 WebviewUrl，否则页面永远不会加载（表现为罩层里是浏览器错误页）。
+    tauri::WebviewWindowBuilder::new(
+        app,
+        label,
+        tauri::WebviewUrl::App("index.html#/ocr-region".into()),
+    )
+    .title("Lemma 框选")
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .shadow(false)
+    .visible(false)
+    .build()
+    .map_err(|e| format!("创建窗口 {label} 失败：{e}"))
 }
 
 fn region_label(index: usize) -> String {

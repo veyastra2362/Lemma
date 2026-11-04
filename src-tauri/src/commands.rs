@@ -2,7 +2,7 @@
 //!
 //! 这里的命令名是前端契约，改名等于破坏前端。
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::core::perf::{Perf, RuntimeStats};
 use crate::core::settings::{Settings, SettingsStore};
@@ -38,7 +38,19 @@ pub fn log_frontend(level: String, message: String) {
 /// 同时是 HUD 预热的收尾信号。
 #[tauri::command]
 pub fn frontend_ready(app: AppHandle, label: String) {
-    crate::core::logs::line(format!("frontend ready {label}"));
+    // 顺手把资源来源写进日志：dev 构建会指向 localhost:1420（页面加载不出来）。
+    // 这条用来一眼识别「又忘了用 pnpm tauri build」——我自己就踩过一次。
+    let asset = app
+        .get_webview_window("shell")
+        .and_then(|window| window.url().ok())
+        .map(|url| url.to_string())
+        .unwrap_or_default();
+    let warning = if asset.contains("localhost:1420") {
+        " ← dev 构建，用 pnpm tauri build"
+    } else {
+        ""
+    };
+    crate::core::logs::line(format!("frontend ready {label} [asset: {asset}{warning}]"));
     if label.starts_with("shell") {
         crate::core::shell::finish_prewarm(&app);
     }
@@ -154,8 +166,8 @@ pub(crate) fn run_region_capture(
         return Err("这块区域里没识别到文字".to_string());
     }
 
-    let mut capture = crate::core::selection::store_ocr(text, "截图".to_string());
-    capture.elapsed_ms = capture_ms;
+    // 耗时必须在 store 之前给定，否则 HUD 读到的是 0ms（踩过一次）
+    let capture = crate::core::selection::store_ocr(text, "截图".to_string(), capture_ms);
     crate::core::logs::line(format!(
         "region ocr capture={capture_ms:.0}ms boxes={} chars={}",
         blocks.len(),

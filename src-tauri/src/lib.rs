@@ -161,16 +161,28 @@ pub fn run() {
                 });
             }
 
+            // HUD 定位冒烟：LEMMA_HUD_SMOKE=1 时启动后直接弹 HUD，用来验证多屏定位。
+            if std::env::var("LEMMA_HUD_SMOKE").is_ok() {
+                shell::present(handle);
+                logs::line("hud smoke presented");
+            }
             // 框选层冒烟：只验证"每屏一个窗口 + 铺满"的显示路径（不点击）。
             if std::env::var("LEMMA_REGION_UI_SMOKE").is_ok() {
                 match shell::present_region_select(handle) {
                     Ok(()) => {
-                        let labels: Vec<String> = app
+                        let windows: Vec<String> = app
                             .webview_windows()
-                            .into_keys()
-                            .filter(|label| label.starts_with("ocr-region"))
+                            .into_iter()
+                            .filter(|(label, _)| label.starts_with("ocr-region"))
+                            .map(|(label, window)| {
+                                let url = window
+                                    .url()
+                                    .map(|url| url.to_string())
+                                    .unwrap_or_else(|error| format!("<{error}>"));
+                                format!("{label} → {url}")
+                            })
                             .collect();
-                        logs::line(format!("region ui smoke ok windows={labels:?}"));
+                        logs::line(format!("region ui smoke ok windows={windows:?}"));
                     }
                     Err(error) => logs::line(format!("region ui smoke failed: {error}")),
                 }

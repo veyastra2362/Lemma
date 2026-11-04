@@ -103,7 +103,7 @@ pub fn pick_uia(outcome: &UiaOutcome, mode: CaptureMode) -> Option<(Tier, String
 ///
 /// 注意：`text` 用整段 OCR 文本，`sentence` 取第一行——
 /// HUD 的句卡片只显示一句，多了会挤爆。
-pub fn store_ocr(text: String, app: String) -> Capture {
+pub fn store_ocr(text: String, app: String, elapsed_ms: f64) -> Capture {
     let first_line = text
         .lines()
         .map(str::trim)
@@ -120,7 +120,7 @@ pub fn store_ocr(text: String, app: String) -> Capture {
         needs_translation,
         candidates: Vec::new(),
         app,
-        elapsed_ms: 0.0,
+        elapsed_ms,
         error: None,
     };
     if let Ok(mut slot) = slot().lock() {
