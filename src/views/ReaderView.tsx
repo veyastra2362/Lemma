@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { t } from "../i18n";
 import { ipc, isTauri, onReaderReload } from "../lib/ipc";
-import type { Entry, ReaderContent } from "../types";
+import type { Entry, ReaderBlock, ReaderContent, ReaderImage } from "../types";
 import { tokenize } from "../utils/tokens";
 
 type BlockState =
@@ -16,29 +16,40 @@ interface Drill {
   entry: Entry | null;
 }
 
+/** 显示形态：并排（左图右译）或覆盖（译文贴在原图框上）。 */
+type ViewMode = "side" | "overlay";
+
 const MAX_DRILL = 16;
 
 /**
- * 双栏对照窗口（深读工作台）。
+ * 双栏对照窗口。
  *
- * - 左原文右译文，块级一一对应（块由 Rust 侧 `core::reader::split_blocks` 切好）；
- * - 逐块串行翻译：块小、命中缓存概率高，也不会把免费接口打限流；
- * - 两侧滚动按百分比联动；
- * - **两栏文本都可点**：点词入下探栈，栈里的释义还能继续点（与 HUD 的 Deck 同构），`Esc` 逐层退；
- * - **窗口是隐藏复用的**：内容靠 `reader://reload` 刷新，阅读位置按文本内容记忆。
+ * 两种形态：
+ * - **图文模式**（截图 OCR）：左原图 + 右译文，或把译文覆盖在原图对应文本框上。
+ *   框的位置来自 OCR 的 `quad`，所以译文和图上文字是**逐块对齐**的。
+ * - **纯文本模式**（选中一段文字）：左原文右译文，按段落块对齐。
+ *
+ * 两栏都可点词，点中入下探栈（与 HUD 的 Deck 同构），`Esc` 逐层退。
+ * 窗口是隐藏复用的：内容靠 `reader://reload` 刷新，阅读位置按文本记忆。
  */
 export function ReaderView() {
   const [content, setContent] = useState<ReaderContent | null>(null);
   const [blocks, setBlocks] = useState<BlockState[]>([]);
   const [drill, setDrill] = useState<Drill[]>([]);
+  const [mode, setMode] = useState<ViewMode>("side");
+  const [hovered, setHovered] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
   const syncing = useRef(false);
   const loadSeq = useRef(0);
-  /** 阅读位置记忆：同一段文本再次打开回到原处，换了文本就从头开始。 */
   const scrollMemory = useRef<{ text: string; left: number; right: number } | null>(null);
+
+  const isImage = Boolean(content?.image && content.imageBlocks.length > 0);
+  const sources = isImage
+    ? (content?.imageBlocks ?? []).map((block: ReaderBlock) => block.text)
+    : (content?.blocks ?? []);
 
   const load = useCallback(() => {
     if (!isTauri()) {
@@ -62,19 +73,22 @@ export function ReaderView() {
           return;
         }
         setContent(payload);
-        setBlocks(payload.blocks.map(() => ({ status: "loading" })));
+
+        const texts = payload.imageBlocks.length > 0
+          ? payload.imageBlocks.map((block) => block.text)
+          : payload.blocks;
+        setBlocks(texts.map(() => ({ status: "loading" })));
 
         if (scrollMemory.current?.text !== payload.text) {
           scrollMemory.current = { text: payload.text, left: 0, right: 0 };
         }
 
-        for (let index = 0; index < payload.blocks.length; index += 1) {
+        for (let index = 0; index < texts.length; index += 1) {
           if (cancelled || seq !== loadSeq.current) {
             return;
           }
-          const block = payload.blocks[index]!;
           try {
-            const result = await ipc.translateText(block);
+            const result = await ipc.translateText(texts[index]!);
             if (cancelled || seq !== loadSeq.current) {
               return;
             }
@@ -119,7 +133,6 @@ export function ReaderView() {
     return () => cancel();
   }, [load]);
 
-  // 恢复阅读位置（等布局稳定后再设）
   useEffect(() => {
     const memory = scrollMemory.current;
     const left = leftRef.current;
@@ -143,7 +156,6 @@ export function ReaderView() {
         return;
       }
       event.preventDefault();
-      // 先退下探栈；栈空才关窗口。
       if (drill.length > 0) {
         setDrill((prev) => prev.slice(0, -1));
         return;
@@ -198,7 +210,6 @@ export function ReaderView() {
     });
   };
 
-  /** 点词：查词条并压入下探栈。 */
   const pushWord = (word: string) => {
     const term = word.trim();
     if (!isTauri() || !term) {
@@ -243,21 +254,79 @@ export function ReaderView() {
     </>
   );
 
+  /** 译文一栏：并排与覆盖两种形态共用。 */
+  const renderTranslation = (index: number, compact: boolean) => {
+    const block = blocks[index];
+    if (!block) {
+      return null;
+    }
+    if (block.status === "loading") {
+      return (
+        <p className="text-[12px] text-[var(--hud-muted)]">{t("translateLoading")}</p>
+      );
+    }
+    if (block.status === "error") {
+      return <p className="text-[11px] leading-relaxed text-red-300/80">{block.error}</p>;
+    }
+    return (
+      <p className={compact ? "text-[12px] leading-[1.6]" : "text-[13.5px] leading-[1.75]"}>
+        {renderClickable(block.text, false)}
+      </p>
+    );
+  };
+
+  const imageSrc = content?.image
+    ? `data:image/png;base64,${(content.image as ReaderImage).pngBase64}`
+    : null;
+
+  /** 把图片坐标换成 CSS 百分比，覆盖层才能跟着缩放。 */
+  const quadStyle = (block: ReaderBlock) => {
+    const image = content?.image;
+    if (!image) {
+      return {};
+    }
+    const xs = block.quad.map(([x]) => x);
+    const ys = block.quad.map(([, y]) => y);
+    const left = (Math.min(...xs) / image.width) * 100;
+    const top = (Math.min(...ys) / image.height) * 100;
+    const width = ((Math.max(...xs) - Math.min(...xs)) / image.width) * 100;
+    const height = ((Math.max(...ys) - Math.min(...ys)) / image.height) * 100;
+    return { left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` };
+  };
+
   return (
     <div
       className="flex h-full w-full flex-col overflow-hidden rounded-xl border text-[var(--hud-text)]"
       style={{ borderColor: "var(--hud-border)", background: "var(--hud-surface)" }}
     >
-      <header
-        data-tauri-drag-region
-        className="flex shrink-0 items-center gap-2 border-b border-white/8 px-4 py-2.5"
-      >
-        <span className="text-[13px] font-medium">{t("readerTitle")}</span>
+      {/* 只有标题文字可拖拽：整块 header 挂 drag-region 会把按钮的点击吞掉（实测） */}
+      <header className="flex shrink-0 items-center gap-2 border-b border-white/8 px-4 py-2.5">
+        <span data-tauri-drag-region className="text-[13px] font-medium">
+          {t("readerTitle")}
+        </span>
         {content?.app && (
           <span className="text-[11px] text-[var(--hud-muted)]">{content.app}</span>
         )}
+        {isImage && (
+          <div className="ml-2 flex overflow-hidden rounded-md border border-white/12">
+            {(["side", "overlay"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setMode(option)}
+                className={`px-2 py-0.5 text-[11px] transition ${
+                  mode === option
+                    ? "bg-[var(--hud-accent)]/20 text-[var(--hud-accent)]"
+                    : "text-[var(--hud-muted)] hover:text-white"
+                }`}
+              >
+                {option === "side" ? t("readerModeSide") : t("readerModeOverlay")}
+              </button>
+            ))}
+          </div>
+        )}
         <span className="ml-auto text-[11px] text-[var(--hud-muted)]">
-          {content ? `${content.blocks.length} ${t("readerBlocks")}` : ""}
+          {sources.length} {t("readerBlocks")}
         </span>
         <button
           type="button"
@@ -278,48 +347,94 @@ export function ReaderView() {
 
       {error && <p className="px-4 py-3 text-[12px] text-red-300/80">{error}</p>}
 
-      <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-white/8">
-        <div
-          ref={leftRef}
-          onScroll={() => syncScroll("left")}
-          className="min-h-0 overflow-y-auto px-4 py-3"
-        >
-          {content?.blocks.map((block, index) => (
-            <p
-              key={index}
-              className="mb-3 text-[13.5px] leading-[1.75] text-[var(--hud-text)]/90"
-            >
-              {renderClickable(block, true)}
-            </p>
-          ))}
+      {/* ---------- 覆盖模式：译文贴在原图框上 ---------- */}
+      {isImage && mode === "overlay" && imageSrc && (
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          <div className="relative mx-auto w-fit" style={{ maxWidth: content!.image!.width }}>
+            <img src={imageSrc} alt="" className="w-full rounded-lg opacity-60" />
+            {content!.imageBlocks.map((block, index) => (
+              <div
+                key={index}
+                onMouseEnter={() => setHovered(index)}
+                onMouseLeave={() => setHovered(null)}
+                className={`absolute overflow-hidden rounded border px-1 ${
+                  hovered === index
+                    ? "border-[var(--hud-accent)] bg-[var(--hud-surface)]/95"
+                    : "border-white/10 bg-[var(--hud-surface)]/85"
+                }`}
+                style={quadStyle(block)}
+              >
+                {renderTranslation(index, true)}
+              </div>
+            ))}
+          </div>
         </div>
+      )}
 
-        <div
-          ref={rightRef}
-          onScroll={() => syncScroll("right")}
-          className="min-h-0 overflow-y-auto px-4 py-3"
-        >
-          {blocks.map((block, index) => (
-            <div key={index} className="mb-3 min-h-[1.75em]">
-              {block.status === "done" && (
-                <p className="text-[13.5px] leading-[1.75]">
-                  {renderClickable(block.text, false)}
+      {/* ---------- 并排模式 ---------- */}
+      {(!isImage || mode === "side") && (
+        <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-white/8">
+          <div
+            ref={leftRef}
+            onScroll={() => syncScroll("left")}
+            className="min-h-0 overflow-y-auto px-4 py-3"
+          >
+            {isImage && imageSrc ? (
+              <div className="space-y-2">
+                {/* 不放大：放大只会更糊，超过原尺寸没有意义 */}
+                <img
+                  src={imageSrc}
+                  alt=""
+                  className="w-full rounded-lg"
+                  style={{ maxWidth: content!.image!.width }}
+                />
+                {content!.imageBlocks.map((block, index) => (
+                  <p
+                    key={index}
+                    onMouseEnter={() => setHovered(index)}
+                    onMouseLeave={() => setHovered(null)}
+                    className={`rounded px-1 text-[12px] leading-relaxed transition ${
+                      hovered === index
+                        ? "bg-[var(--hud-accent)]/15 text-white"
+                        : "text-[var(--hud-muted)]"
+                    }`}
+                  >
+                    {block.text}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              (content?.blocks ?? []).map((block, index) => (
+                <p
+                  key={index}
+                  className="mb-3 text-[13.5px] leading-[1.75] text-[var(--hud-text)]/90"
+                >
+                  {renderClickable(block, true)}
                 </p>
-              )}
-              {block.status === "loading" && (
-                <p className="text-[12px] text-[var(--hud-muted)]">
-                  {t("translateLoading")}
-                </p>
-              )}
-              {block.status === "error" && (
-                <p className="text-[11px] leading-relaxed text-red-300/80">
-                  {block.error}
-                </p>
-              )}
-            </div>
-          ))}
+              ))
+            )}
+          </div>
+
+          <div
+            ref={rightRef}
+            onScroll={() => syncScroll("right")}
+            className="min-h-0 overflow-y-auto px-4 py-3"
+          >
+            {sources.map((_, index) => (
+              <div
+                key={index}
+                onMouseEnter={() => setHovered(index)}
+                onMouseLeave={() => setHovered(null)}
+                className={`mb-3 min-h-[1.75em] rounded px-1 transition ${
+                  hovered === index ? "bg-[var(--hud-accent)]/10" : ""
+                }`}
+              >
+                {renderTranslation(index, false)}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {current && (
         <footer className="shrink-0 border-t border-white/8 bg-black/20 px-4 py-2">
@@ -331,9 +446,7 @@ export function ReaderView() {
                   type="button"
                   onClick={() => setDrill((prev) => prev.slice(0, index + 1))}
                   className={
-                    index === drill.length - 1
-                      ? "text-[var(--hud-text)]"
-                      : "hover:text-white"
+                    index === drill.length - 1 ? "text-[var(--hud-text)]" : "hover:text-white"
                   }
                 >
                   {item.word}

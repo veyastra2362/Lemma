@@ -34,6 +34,8 @@ const zhCN = {
   readerOpen: "双栏",
   readerFailed: "双栏打开失败",
   readerEmpty: "没有可对照的内容",
+  readerModeSide: "并排",
+  readerModeOverlay: "覆盖",
   readerEscHint: "Esc 逐层退出",
   regionHint: "拖出一个矩形开始识别 · Esc 或右键取消",
   settingsSectionOcr: "截图识别",

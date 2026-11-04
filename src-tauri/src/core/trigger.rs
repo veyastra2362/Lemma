@@ -92,10 +92,7 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
                 if capture.text.trim().is_empty() {
                     return;
                 }
-                reader::set_payload(ReaderPayload {
-                    text: capture.text,
-                    app: capture.app,
-                });
+                reader::set_payload(ReaderPayload::text_only(capture.text, capture.app));
                 shell::present_reader_on_main(app);
             });
             // 注册失败必须向上抛：否则用户看到"设置已保存"，但按键其实没生效。

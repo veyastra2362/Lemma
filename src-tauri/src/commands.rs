@@ -167,7 +167,37 @@ pub(crate) fn run_region_capture(
     }
 
     // 耗时必须在 store 之前给定，否则 HUD 读到的是 0ms（踩过一次）
-    let capture = crate::core::selection::store_ocr(text, "截图".to_string(), capture_ms);
+    let capture = crate::core::selection::store_ocr(text.clone(), "截图".to_string(), capture_ms);
+
+    // 同时准备图文 payload：截图 + 每个文本框的坐标。
+    // 这样用户在 HUD 点「双栏」时看到的是原图与译文的对照，而不是一段纯文字。
+    match crate::core::reader::encode_png_base64(&shot.pixels, shot.width, shot.height) {
+        Ok(png) => {
+            let blocks = blocks
+                .iter()
+                .map(|block| crate::core::reader::ReaderBlock {
+                    text: block.text.clone(),
+                    quad: [
+                        (block.quad[0].x, block.quad[0].y),
+                        (block.quad[1].x, block.quad[1].y),
+                        (block.quad[2].x, block.quad[2].y),
+                        (block.quad[3].x, block.quad[3].y),
+                    ],
+                })
+                .collect();
+            crate::core::reader::set_payload(crate::core::reader::ReaderPayload {
+                text,
+                app: "截图".to_string(),
+                blocks,
+                image: Some(crate::core::reader::ReaderImage {
+                    width: shot.width,
+                    height: shot.height,
+                    png_base64: png,
+                }),
+            });
+        }
+        Err(error) => crate::core::logs::line(format!("reader image encode failed: {error}")),
+    }
     crate::core::logs::line(format!(
         "region ocr capture={capture_ms:.0}ms boxes={} chars={}",
         blocks.len(),
@@ -198,7 +228,14 @@ pub async fn open_reader(app: AppHandle, text: String, source: String) -> Result
     if text.trim().is_empty() {
         return Err("没有可对照的文本".to_string());
     }
-    crate::core::reader::set_payload(crate::core::reader::ReaderPayload { text, app: source });
+    // 截图 OCR 已经存了带图的 payload；用纯文本覆盖会让「图文对照」退化成纯文字。
+    let already_image = crate::core::reader::payload()
+        .is_some_and(|payload| payload.image.is_some() && payload.text == text);
+    if !already_image {
+        crate::core::reader::set_payload(crate::core::reader::ReaderPayload::text_only(
+            text, source,
+        ));
+    }
     match crate::core::shell::present_reader(&app) {
         Ok(()) => {
             crate::core::logs::line("reader opened");
@@ -215,8 +252,16 @@ pub async fn open_reader(app: AppHandle, text: String, source: String) -> Result
 #[tauri::command]
 pub fn reader_content() -> Option<crate::core::reader::ReaderContent> {
     let payload = crate::core::reader::payload()?;
+    // 纯文本模式才需要切块；图文模式的块带坐标，直接给前端
+    let blocks = if payload.blocks.is_empty() {
+        crate::core::reader::split_blocks(&payload.text)
+    } else {
+        Vec::new()
+    };
     Some(crate::core::reader::ReaderContent {
-        blocks: crate::core::reader::split_blocks(&payload.text),
+        blocks,
+        image_blocks: payload.blocks,
+        image: payload.image,
         text: payload.text,
         app: payload.app,
     })

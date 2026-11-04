@@ -200,11 +200,21 @@ pub fn run() {
                         parts[2] as u32,
                         parts[3] as u32,
                     ) {
-                        Ok(capture) => logs::line(format!(
-                            "region smoke ok chars={} text={}",
-                            capture.text.chars().count(),
-                            capture.text.replace('\n', " / ")
-                        )),
+                        Ok(capture) => {
+                            if std::env::var("LEMMA_REGION_SMOKE_READER").is_ok() {
+                                match shell::present_reader(handle) {
+                                    Ok(()) => logs::line("region smoke reader opened"),
+                                    Err(error) => {
+                                        logs::line(format!("region smoke reader failed: {error}"))
+                                    }
+                                }
+                            }
+                            logs::line(format!(
+                                "region smoke ok chars={} text={}",
+                                capture.text.chars().count(),
+                                capture.text.replace('\n', " / ")
+                            ));
+                        }
                         Err(error) => logs::line(format!("region smoke failed: {error}")),
                     }
                 }
@@ -212,10 +222,10 @@ pub fn run() {
             // 冒烟入口：带上文本启动即可直接开双栏，不依赖窗口焦点。
             // 用法：$env:LEMMA_READER_SMOKE="some text"; lemma.exe
             if let Ok(text) = std::env::var("LEMMA_READER_SMOKE") {
-                crate::core::reader::set_payload(crate::core::reader::ReaderPayload {
+                crate::core::reader::set_payload(crate::core::reader::ReaderPayload::text_only(
                     text,
-                    app: "smoke".to_string(),
-                });
+                    "smoke".to_string(),
+                ));
                 match shell::present_reader(handle) {
                     Ok(()) => logs::line("reader opened (smoke)"),
                     Err(error) => logs::line(format!("reader smoke failed: {error}")),
