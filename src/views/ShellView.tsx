@@ -71,6 +71,7 @@ function CardView({
   onWord,
   collapsed,
   onOpenReader,
+  onSpeak,
 }: {
   card: Card;
   sections: CardSections | null;
@@ -78,6 +79,8 @@ function CardView({
   collapsed: boolean;
   /** 为 null 表示双栏功能关闭，不显示入口。 */
   onOpenReader: ((text: string) => void) | null;
+  /** 为 null 表示朗读不可用（模型未装），不显示入口。 */
+  onSpeak: ((text: string) => void) | null;
 }) {
   const entry = card.entry;
 
@@ -112,15 +115,26 @@ function CardView({
             {translation.status === "done" &&
               ` · ${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
           </p>
-          {onOpenReader && (
-            <button
-              type="button"
-              onClick={() => onOpenReader(card.original as string)}
-              className="ml-auto shrink-0 rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
-            >
-              {t("readerOpen")}
-            </button>
-          )}
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {onSpeak && /[\u4e00-\u9fff]/.test(card.original ?? "") && (
+              <button
+                type="button"
+                onClick={() => onSpeak(card.original as string)}
+                className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+              >
+                {t("speakStart")}
+              </button>
+            )}
+            {onOpenReader && (
+              <button
+                type="button"
+                onClick={() => onOpenReader(card.original as string)}
+                className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+              >
+                {t("readerOpen")}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -256,6 +270,7 @@ export function ShellView() {
   const jumpTo = useDeckStore((state) => state.jumpTo);
   const setTranslation = useDeckStore((state) => state.setTranslation);
   const [readerError, setReaderError] = useState<string | null>(null);
+  const [speechReady, setSpeechReady] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const lastRequested = useRef(0);
@@ -289,6 +304,17 @@ export function ShellView() {
     observer.observe(element);
     return () => observer.disconnect();
   }, [cards, settings, showHints]);
+
+  // 朗读模型是否就绪（装了就显示朗读按钮）
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+    void ipc
+      .speechReady()
+      .then(setSpeechReady)
+      .catch(() => setSpeechReady(false));
+  }, []);
 
   // 诊断用：Rust 侧发起的 IPC 冒烟，走与点击按钮完全相同的路径。
   useEffect(() => {
@@ -345,6 +371,23 @@ export function ShellView() {
         });
       });
   }, [rootCard, setTranslation]);
+
+  const speak = (text: string) => {
+    if (!isTauri()) {
+      return;
+    }
+    void ipc
+      .speakText(text)
+      .then((result) => {
+        void ipc.logFrontend(
+          "info",
+          `speak ok ${result.durationSecs.toFixed(2)}s audio / ${result.synthesisMs.toFixed(0)}ms`,
+        );
+      })
+      .catch((reason: unknown) => {
+        void ipc.logFrontend("error", "speak failed: " + String(reason));
+      });
+  };
 
   const openReader = (text: string) => {
     if (!isTauri()) {
@@ -446,6 +489,7 @@ export function ShellView() {
                 onOpenReader={
                   settings?.readerOpenMode === "hud" ? openReader : null
                 }
+                onSpeak={speechReady ? speak : null}
               />
             ))}
           </>

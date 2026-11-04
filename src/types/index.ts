@@ -59,6 +59,11 @@ export interface ReaderContent {
   image: ReaderImage | null;
 }
 
+export interface SpeakResult {
+  durationSecs: number;
+  synthesisMs: number;
+}
+
 export interface TranslateResult {
   text: string;
   provider: string;
@@ -77,6 +82,7 @@ export interface Settings {
   showHints: boolean;
   cardSections: CardSections;
   /** 翻译走哪个服务。 */
+  speechSpeed: number;
   ocrHotkeyEnabled: boolean;
   ocrHotkey: string;
   readerOpenMode: ReaderOpenMode;

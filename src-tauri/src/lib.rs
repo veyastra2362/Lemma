@@ -64,6 +64,9 @@ pub fn run() {
             commands::close_settings,
             commands::lookup_word,
             commands::translate_text,
+            commands::speak_text,
+            commands::stop_speaking,
+            commands::speech_ready,
             commands::open_reader,
             commands::run_region_ocr,
             commands::start_region_select,
@@ -161,6 +164,35 @@ pub fn run() {
                 });
             }
 
+            // 朗读冒烟：LEMMA_SPEAK_SMOKE="文本" 直接跑「合成→播放」并记录内存增量。
+            // 内存是这一块的真问题（模型空载约 242 MB），所以必须量出来。
+            if let Ok(text) = std::env::var("LEMMA_SPEAK_SMOKE") {
+                if let Some(window) = app.get_webview_window("shell") {
+                    let _ = window;
+                }
+                let before = process_rss_mb();
+                let started = std::time::Instant::now();
+                match crate::core::tts::speak_text(&text, 1.0) {
+                    Ok(speech) => {
+                        let duration = speech.duration_secs();
+                        let dir = std::env::temp_dir().join("lemma-tts");
+                        let _ = std::fs::create_dir_all(&dir);
+                        let path = dir.join("smoke.wav");
+                        let _ = crate::core::tts::save_wav(&speech, &path);
+                        let played = crate::platform::play_wav(&path);
+                        let peak = process_rss_mb();
+                        // 卸掉模型后再量一次：验证"用完卸"到底有没有把内存还回系统
+                        crate::core::tts::release_model();
+                        std::thread::sleep(std::time::Duration::from_millis(800));
+                        let after_release = process_rss_mb();
+                        logs::line(format!(
+                            "speak smoke audio={duration:.2}s total={:.0}ms rss {before:.0}→{peak:.0}MB(峰值)→{after_release:.0}MB(卸载后) play={played:?}",
+                            started.elapsed().as_secs_f64() * 1000.0,
+                        ));
+                    }
+                    Err(error) => logs::line(format!("speak smoke failed: {error}")),
+                }
+            }
             // HUD 定位冒烟：LEMMA_HUD_SMOKE=1 时启动后直接弹 HUD，用来验证多屏定位。
             if std::env::var("LEMMA_HUD_SMOKE").is_ok() {
                 shell::present(handle);
@@ -242,3 +274,14 @@ pub fn run() {
         .expect("Lemma 启动失败");
 }
 pub mod cli;
+/// 当前进程工作集（MB）。冒烟时用来量模型加载的内存增量。
+fn process_rss_mb() -> f64 {
+    use sysinfo::{Pid, System};
+    let mut system = System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    let pid = Pid::from_u32(std::process::id());
+    system
+        .process(pid)
+        .map(|p| p.memory() as f64 / (1024.0 * 1024.0))
+        .unwrap_or(0.0)
+}

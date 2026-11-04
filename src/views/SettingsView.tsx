@@ -322,6 +322,35 @@ export function SettingsView() {
           </div>
         </section>
 
+        {/* ---- 朗读 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionSpeech")}
+          </h2>
+          <div className="rounded-lg border border-white/10 px-3 py-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px]">{t("settingsSpeechSpeed")}</span>
+              <span className="font-mono text-[12px] text-[var(--hud-accent)]">
+                {(settings?.speechSpeed ?? 1).toFixed(2)}×
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0.6}
+              max={1.4}
+              step={0.05}
+              value={settings?.speechSpeed ?? 1}
+              onChange={(event) =>
+                apply({ speechSpeed: Number(event.target.value) })
+              }
+              className="mt-2 w-full accent-[var(--hud-accent)]"
+            />
+            <p className="mt-1 text-[11px] text-[var(--hud-muted)]">
+              {t("settingsSpeechSpeedHint")}
+            </p>
+          </div>
+        </section>
+
         {/* ---- 截图识别 ---- */}
         <section className="mt-5">
           <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">

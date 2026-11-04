@@ -3,6 +3,7 @@
 //! 纪律：`cfg(target_os = ...)` 只允许出现在本文件与各后端内部。
 //! `core/` 永远只通过这里导出的函数与类型访问操作系统。
 
+pub mod audio;
 pub mod clipboard;
 pub mod console;
 pub mod keyboard;
@@ -22,6 +23,34 @@ mod fallback;
 use fallback as backend;
 
 pub use window::Window as PlatformWindow;
+
+/// 播放 WAV（异步，立即返回；后一次调用会打断前一次）。
+pub fn play_wav(path: &std::path::Path) -> Result<(), String> {
+    audio::play_wav(path)
+}
+
+/// 停止当前播放。
+pub fn stop_audio() {
+    audio::stop();
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn backend_play_wav(path: &std::path::Path) -> Result<(), String> {
+    audio::windows_impl::play(path)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn backend_play_wav(_path: &std::path::Path) -> Result<(), String> {
+    Err("当前平台暂不支持音频播放".to_string())
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn backend_stop_audio() {
+    audio::windows_impl::stop();
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn backend_stop_audio() {}
 
 /// 整个虚拟桌面（所有显示器）的物理像素边界。
 pub fn virtual_screen_bounds() -> Option<placement::Rect> {

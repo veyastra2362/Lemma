@@ -38,6 +38,7 @@ export function ReaderView() {
   const [drill, setDrill] = useState<Drill[]>([]);
   const [mode, setMode] = useState<ViewMode>("side");
   const [hovered, setHovered] = useState<number | null>(null);
+  const [speechReady, setSpeechReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const leftRef = useRef<HTMLDivElement>(null);
@@ -146,6 +147,17 @@ export function ReaderView() {
     });
     return () => window.cancelAnimationFrame(timer);
   }, [content]);
+
+  // 朗读模型是否就绪（装了就显示朗读按钮）
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+    void ipc
+      .speechReady()
+      .then(setSpeechReady)
+      .catch(() => setSpeechReady(false));
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -324,6 +336,21 @@ export function ReaderView() {
               </button>
             ))}
           </div>
+        )}
+        {speechReady && /[\u4e00-\u9fff]/.test(content?.text ?? "") && (
+          <button
+            type="button"
+            onClick={() => {
+              void ipc
+                .speakText(content?.text ?? "")
+                .catch((reason: unknown) => {
+                  void ipc.logFrontend("error", "reader speak failed: " + String(reason));
+                });
+            }}
+            className="ml-2 rounded border border-white/12 px-1.5 py-0.5 text-[11px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+          >
+            {t("speakStart")}
+          </button>
         )}
         <span className="ml-auto text-[11px] text-[var(--hud-muted)]">
           {sources.length} {t("readerBlocks")}

@@ -272,6 +272,77 @@ pub fn close_reader(app: AppHandle) {
     crate::core::shell::close_reader(&app);
 }
 
+/// 朗读一段中文。
+///
+/// **必须是 async**：合成一次要几秒，跑在主线程会把整个 UI 冻住
+/// （同 `open_reader` 的死锁教训：事件循环不能被长任务占住）。
+///
+/// 模型是懒加载的：第一次调用会把 121 MB 权重读进内存（空载约 242 MB），
+/// 所以只在用户真的点朗读时才付这份成本。
+#[tauri::command]
+pub async fn speak_text(app: AppHandle, text: String) -> Result<SpeakResult, String> {
+    let speed = app
+        .state::<crate::core::settings::SettingsStore>()
+        .get()
+        .speech_speed;
+
+    let started = std::time::Instant::now();
+    let speech = crate::core::tts::speak_text(&text, speed)?;
+    let synthesis_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let duration = speech.duration_secs();
+
+    // 写到临时文件再交给 PlaySound：它只吃文件名，不吃内存缓冲
+    let dir = std::env::temp_dir().join("lemma-tts");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("建临时目录失败：{e}"))?;
+    let path = dir.join("speech.wav");
+    crate::core::tts::save_wav(&speech, &path)?;
+
+    if let Err(error) = crate::platform::play_wav(&path) {
+        crate::core::logs::line(format!("tts play failed: {error}"));
+        return Err(error);
+    }
+
+    // 默认合成完就卸模型：实测加载后主进程 RSS 从 30 MB 涨到 355 MB。
+    // 用户如果连续朗读，可在设置里改成常驻（更快，但一直占着内存）。
+    let keep = app
+        .state::<crate::core::settings::SettingsStore>()
+        .get()
+        .tts_keep_loaded;
+    if !keep {
+        crate::core::tts::release_model();
+    }
+
+    crate::core::logs::line(format!(
+        "tts speak chars={} audio={duration:.2}s synthesis={synthesis_ms:.0}ms rtf={:.2}x keep={keep}",
+        text.chars().count(),
+        synthesis_ms / 1000.0 / duration.max(0.001) as f64
+    ));
+
+    Ok(SpeakResult {
+        duration_secs: duration,
+        synthesis_ms,
+    })
+}
+
+/// 停止朗读。
+#[tauri::command]
+pub fn stop_speaking() {
+    crate::platform::stop_audio();
+}
+
+/// 朗读是否可用（模型是否齐备）。
+#[tauri::command]
+pub fn speech_ready() -> bool {
+    crate::core::tts::models_ready()
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeakResult {
+    pub duration_secs: f32,
+    pub synthesis_ms: f64,
+}
+
 /// 翻译一段文本。走 `core::translate` 的分级路由 + 缓存。
 ///
 /// 明确的 async 命令：网络往返 ~700 ms，不能阻塞 UI 线程。

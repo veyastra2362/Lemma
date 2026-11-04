@@ -101,27 +101,50 @@ fn voice_file() -> Option<PathBuf> {
         .find(|path| path.extension().is_some_and(|ext| ext == "bin"))
 }
 
-static SESSION: OnceLock<Mutex<Session>> = OnceLock::new();
+static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 static VOCAB: OnceLock<Vec<(String, i64)>> = OnceLock::new();
 static STYLES: OnceLock<Vec<f32>> = OnceLock::new();
 
-fn session() -> Result<&'static Mutex<Session>, String> {
-    if let Some(existing) = SESSION.get() {
-        return Ok(existing);
+/// 会话是否已加载（用于界面提示"已占内存"）。
+pub fn model_loaded() -> bool {
+    SESSION.lock().map(|guard| guard.is_some()).unwrap_or(false)
+}
+
+/// 卸载模型，把内存还给系统。
+///
+/// 实测：加载后主进程 RSS 从 30 MB 涨到 **355 MB**——这是主进程口径的 10 倍，
+/// 所以"用完就卸"是默认行为，代价是下次朗读要重新加载（约 1.2 s）。
+pub fn release_model() {
+    if let Ok(mut guard) = SESSION.lock()
+        && guard.is_some()
+    {
+        *guard = None;
+        crate::core::logs::line("tts model released");
     }
-    let path = model_path("kokoro-zh-q8.onnx")?;
-    let created = Session::builder()
-        .map_err(|e| format!("创建 TTS 会话失败：{e}"))?
-        .with_optimization_level(GraphOptimizationLevel::Level3)
-        .map_err(|e| e.to_string())?
-        .with_intra_threads(4)
-        .map_err(|e| e.to_string())?
-        .commit_from_file(&path)
-        .map_err(|e| format!("加载 TTS 模型失败：{e}"))?;
-    let _ = SESSION.set(Mutex::new(created));
-    SESSION
-        .get()
-        .ok_or_else(|| "TTS 会话初始化失败".to_string())
+}
+
+/// 拿到（必要时创建）会话并执行一次推理。
+///
+/// 回调只能返回**拥有所有权**的数据（不能返回 `SessionOutputs`——它借用 session），
+/// 所以调用方在闭包里就把张量抽成 `Vec<f32>`。
+fn with_session<T>(run: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
+    let mut guard = SESSION.lock().map_err(|_| "TTS 会话被毒化".to_string())?;
+    if guard.is_none() {
+        let path = model_path("kokoro-zh-q8.onnx")?;
+        let created = Session::builder()
+            .map_err(|e| format!("创建 TTS 会话失败：{e}"))?
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| e.to_string())?
+            .with_intra_threads(4)
+            .map_err(|e| e.to_string())?
+            .commit_from_file(&path)
+            .map_err(|e| format!("加载 TTS 模型失败：{e}"))?;
+        *guard = Some(created);
+    }
+    let session = guard
+        .as_mut()
+        .ok_or_else(|| "TTS 会话初始化失败".to_string())?;
+    run(session)
 }
 
 /// 读 Kokoro 的符号词表（`tokenizer.json` 里的 `model.vocab`）。
@@ -226,23 +249,21 @@ pub fn speak_phonemes(phonemes: &str, speed: f32) -> Result<Speech, String> {
         .map_err(|e| e.to_string())?;
     let speed = Array1::<f32>::from_vec(vec![speed]);
 
-    let mut guard = session()?
-        .lock()
-        .map_err(|_| "TTS 会话被毒化".to_string())?;
-    let outputs = guard
-        .run(ort::inputs![
-            "input_ids" => Tensor::from_array(input_ids).map_err(|e| e.to_string())?,
-            "style" => Tensor::from_array(style).map_err(|e| e.to_string())?,
-            "speed" => Tensor::from_array(speed).map_err(|e| e.to_string())?,
-        ])
-        .map_err(|e| format!("TTS 推理失败：{e}"))?;
+    let samples = with_session(|session| {
+        let outputs = session
+            .run(ort::inputs![
+                "input_ids" => Tensor::from_array(input_ids).map_err(|e| e.to_string())?,
+                "style" => Tensor::from_array(style).map_err(|e| e.to_string())?,
+                "speed" => Tensor::from_array(speed).map_err(|e| e.to_string())?,
+            ])
+            .map_err(|e| format!("TTS 推理失败：{e}"))?;
+        let (_, data) = outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| e.to_string())?;
+        Ok(data.to_vec())
+    })?;
 
-    let (_, data) = outputs[0]
-        .try_extract_tensor::<f32>()
-        .map_err(|e| e.to_string())?;
-    Ok(Speech {
-        samples: data.to_vec(),
-    })
+    Ok(Speech { samples })
 }
 
 /// 把一段中文朗读出来。

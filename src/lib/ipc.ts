@@ -8,6 +8,7 @@ import type {
   ReaderContent,
   RuntimeStats,
   Settings,
+  SpeakResult,
   TranslateResult,
 } from "../types";
 
@@ -70,6 +71,10 @@ export const ipc = {
   resizeHud: (height: number) => invoke<void>("resize_hud", { height }),
   /** Deck 下探查词。未收录返回 null。 */
   lookupWord: (word: string) => invoke<Entry | null>("lookup_word", { word }),
+  /** 朗读一段中文（模型懒加载，第一次会慢）。 */
+  speakText: (text: string) => invoke<SpeakResult>("speak_text", { text }),
+  stopSpeaking: () => invoke<void>("stop_speaking"),
+  speechReady: () => withRetry("speech_ready", () => invoke<boolean>("speech_ready")),
   /** 框选区域（物理像素）→ 截屏 → OCR → 弹 HUD。 */
   runRegionOcr: (rect: { x: number; y: number; width: number; height: number }) =>
     invoke<Capture>("run_region_ocr", rect),
