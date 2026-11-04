@@ -200,6 +200,42 @@ pub fn edit_distance(a: &str, b: &str) -> usize {
     previous[b.len()]
 }
 
+/// 排版归一化：只抹平"同一个字符的不同写法"，不动内容。
+///
+/// 中文截图里弯引号（“”）、全角逗号/括号、连字符变体遍地都是，
+/// 把它们算进 CER 会让"排版差异"看起来像"识别错误"，掩盖真实问题。
+pub fn normalize_for_cer(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut last_was_space = false;
+    for ch in text.chars() {
+        let mapped = match ch {
+            '“' | '”' | '„' | '‟' | '「' | '」' | '『' | '』' => '"',
+            '‘' | '’' | '‚' | '‛' => '\'',
+            '，' => ',',
+            '。' => '.',
+            '；' => ';',
+            '：' => ':',
+            '！' => '!',
+            '？' => '?',
+            '（' => '(',
+            '）' => ')',
+            '－' | '—' | '–' | '─' => '-',
+            '　' => ' ',
+            other => other,
+        };
+        if mapped.is_whitespace() {
+            if !last_was_space {
+                out.push(' ');
+                last_was_space = true;
+            }
+            continue;
+        }
+        last_was_space = false;
+        out.push(mapped);
+    }
+    out.trim().to_string()
+}
+
 /// 字符错误率：编辑距离 / 参考答案长度。0.0 表示完全正确。
 pub fn char_error_rate(reference: &str, hypothesis: &str) -> f64 {
     let length = reference.chars().count().max(1);

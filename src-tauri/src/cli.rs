@@ -238,6 +238,7 @@ fn ocr_bench(args: &[String]) {
 
     println!("基准集：{} 张，预放大 {scale}×", entries.len());
     let mut total_cer = 0.0;
+    let mut total_norm = 0.0;
     let mut worst: Vec<(String, f64, String)> = Vec::new();
     let mut total_ms = 0.0;
 
@@ -270,15 +271,20 @@ fn ocr_bench(args: &[String]) {
             Ok(blocks) => {
                 let text = crate::core::ocr::blocks_to_text(&blocks);
                 let cer = crate::core::ocr::char_error_rate(&truth, &text);
+                // 归一化后（抹平弯引号/全角标点）才是"内容"层面的错误率
+                let cer_norm = crate::core::ocr::char_error_rate(
+                    &crate::core::ocr::normalize_for_cer(&truth),
+                    &crate::core::ocr::normalize_for_cer(&text),
+                );
                 total_cer += cer;
+                total_norm += cer_norm;
                 let name = path
                     .file_name()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string();
                 println!(
-                    "  {name:<28} CER={:.3}  {elapsed:>6.0}ms  段={}",
-                    cer,
+                    "  {name:<28} CER={cer:.3}（内容 {cer_norm:.3}）  {elapsed:>6.0}ms  段={}",
                     blocks.len()
                 );
                 if cer > 0.0 {
@@ -291,8 +297,9 @@ fn ocr_bench(args: &[String]) {
 
     let count = entries.len().max(1) as f64;
     println!(
-        "平均 CER={:.3}  平均耗时 {:.0} ms/张  合计 {:.0} ms",
+        "平均 CER={:.3}（内容层面 {:.3}）  平均耗时 {:.0} ms/张  合计 {:.0} ms",
         total_cer / count,
+        total_norm / count,
         total_ms / count,
         total_ms
     );

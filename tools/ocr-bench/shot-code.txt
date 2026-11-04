@@ -1,0 +1,5 @@
+<div className="field ref-field">
+<span className="field__label">
+参考图
+{references.length === 1 && caps?.masks === true && (
+<div className="mask-entry">
