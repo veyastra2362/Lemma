@@ -69,6 +69,8 @@ export interface ModelStatus {
 export interface SpeakResult {
   durationSecs: number;
   synthesisMs: number;
+  /** 合成出来的 WAV 路径（流式朗读自己排播放用）。 */
+  path: string;
 }
 
 export interface TranslateResult {

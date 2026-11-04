@@ -65,6 +65,8 @@ pub fn run() {
             commands::lookup_word,
             commands::translate_text,
             commands::speak_text,
+            commands::synthesize_speech,
+            commands::play_audio,
             commands::stop_speaking,
             commands::speech_ready,
             commands::model_status,
@@ -320,7 +322,19 @@ pub fn run() {
                     "smoke".to_string(),
                 ));
                 match shell::present_reader(handle) {
-                    Ok(()) => logs::line("reader opened (smoke)"),
+                    Ok(()) => {
+                        logs::line("reader opened (smoke)");
+                        // 让前端自己发起一次朗读，用于验证"分句合成 + 预取"流水线
+                        if std::env::var("LEMMA_SPEAK_STREAM_SMOKE").is_ok() {
+                            let handle = handle.clone();
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
+                                if let Some(window) = handle.get_webview_window("reader") {
+                                    let _ = window.emit("reader://autospeak", ());
+                                }
+                            });
+                        }
+                    }
                     Err(error) => logs::line(format!("reader smoke failed: {error}")),
                 }
             }

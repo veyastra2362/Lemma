@@ -235,6 +235,9 @@ fn tts_worker() {
     let mut stdout = std::io::stdout();
     let dir = std::env::temp_dir().join("lemma-tts");
     let _ = std::fs::create_dir_all(&dir);
+    // 每次请求写不同文件：流式朗读时"下一句的合成"会与"当前句的播放"重叠，
+    // 复用同一个路径会把正在播的文件覆盖掉。
+    let mut sequence: u64 = 0;
 
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };
@@ -255,7 +258,8 @@ fn tts_worker() {
                     .unwrap_or(1.0) as f32;
                 match crate::core::tts::speak_phonemes(phonemes, speed) {
                     Ok(speech) => {
-                        let path = dir.join("worker.wav");
+                        sequence += 1;
+                        let path = dir.join(format!("worker-{sequence}.wav"));
                         match crate::core::tts::save_wav(&speech, &path) {
                             Ok(()) => serde_json::json!({
                                 "ok": true,
@@ -310,6 +314,42 @@ fn tts(args: &[String]) {
             Ok(phonemes) => println!("音素：{phonemes}"),
             Err(error) => println!("音素化失败：{error}"),
         }
+    }
+
+    // 流式对照：分句逐句合成，量"首句延迟"与总耗时
+    if std::env::var("LEMMA_TTS_STREAM").is_ok() {
+        let sentences: Vec<String> = text
+            .split_inclusive(['。', '！', '？', '；', '.', '!', '?', ';'])
+            .map(|part| part.trim().to_string())
+            .filter(|part| !part.is_empty())
+            .collect();
+        println!("分句：{} 句", sentences.len());
+        let overall = Instant::now();
+        let mut first_ms = 0.0;
+        for (index, sentence) in sentences.iter().enumerate() {
+            let t = Instant::now();
+            match crate::core::tts::speak_text(sentence, speed) {
+                Ok(speech) => {
+                    let ms = t.elapsed().as_secs_f64() * 1000.0;
+                    if index == 0 {
+                        first_ms = ms;
+                    }
+                    println!(
+                        "  第 {} 句 {:.0} ms → {:.2}s 音频  {}",
+                        index + 1,
+                        ms,
+                        speech.duration_secs(),
+                        sentence.chars().take(18).collect::<String>()
+                    );
+                }
+                Err(error) => println!("  第 {} 句失败：{error}", index + 1),
+            }
+        }
+        println!(
+            "首句延迟 {first_ms:.0} ms（整段一次合成需要 {:.0} ms）",
+            overall.elapsed().as_secs_f64() * 1000.0
+        );
+        return;
     }
 
     let started = Instant::now();

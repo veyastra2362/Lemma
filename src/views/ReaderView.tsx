@@ -1,8 +1,9 @@
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { t } from "../i18n";
 import { ipc, isTauri, onReaderReload } from "../lib/ipc";
-import type { Entry, ReaderBlock, ReaderContent, ReaderImage } from "../types";
+import type { Entry, ReaderBlock, ReaderContent, ReaderImage, SpeakResult } from "../types";
 import { tokenize } from "../utils/tokens";
 
 type BlockState =
@@ -18,6 +19,38 @@ interface Drill {
 
 /** 显示形态：并排（左图右译）或覆盖（译文贴在原图框上）。 */
 type ViewMode = "side" | "overlay";
+
+/**
+ * 把文本切成句：中文按 `。！？；`、英文按 `. ! ? ;`，标点跟着前一句。
+ *
+ * 为什么不直接用 `core::reader::split_blocks`：那个是给"块级对齐"用的（几百字一块），
+ * 朗读要的是**句子级**——一块一次合成太慢，失去流式的意义。
+ */
+function splitSentences(text: string): string[] {
+  const ends = new Set(["。", "！", "？", "；", ".", "!", "?", ";", "\n"]);
+  const sentences: string[] = [];
+  let current = "";
+  for (const ch of text) {
+    if (ch === "\n") {
+      if (current.trim()) {
+        sentences.push(current.trim());
+      }
+      current = "";
+      continue;
+    }
+    current += ch;
+    if (ends.has(ch)) {
+      if (current.trim()) {
+        sentences.push(current.trim());
+      }
+      current = "";
+    }
+  }
+  if (current.trim()) {
+    sentences.push(current.trim());
+  }
+  return sentences;
+}
 
 const MAX_DRILL = 16;
 
@@ -45,6 +78,8 @@ export function ReaderView() {
   const [error, setError] = useState<string | null>(null);
 
   const imageBoxRef = useRef<HTMLDivElement>(null);
+  /** 当前文本的快照，供冒烟事件读取（事件回调里拿不到最新的 state 闭包）。 */
+  const contentRef = useRef<string>("");
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
   const syncing = useRef(false);
@@ -55,19 +90,6 @@ export function ReaderView() {
   const sources = isImage
     ? (content?.imageBlocks ?? []).map((block: ReaderBlock) => block.text)
     : (content?.blocks ?? []);
-
-  /** 全文的词序号表：每个词占多少字符，用于按时间线性插值。 */
-  const wordTimeline = (() => {
-    const list: number[] = []; // 每个词的字符数
-    for (const source of sources) {
-      for (const token of tokenize(source)) {
-        if (token.kind === "word") {
-          list.push(token.value.length);
-        }
-      }
-    }
-    return list;
-  })();
 
   const stopSpeaking = useCallback(() => {
     if (speakTimer.current !== null) {
@@ -85,6 +107,15 @@ export function ReaderView() {
    * 长词占的时间多、短词少。顺序与合成时的音素顺序一致（同一段文本、同一个分词）。
    * 这是估算而不是真同步，足够让视线跟着走；精确对齐需要换能报位置的播放后端。
    */
+  /**
+   * 流式朗读：**分句合成 + 预取**。
+   *
+   * 为什么：整段一次合成时，首句要等整段算完（实测长段落 4 s+）。
+   * 现在先合成第一句就开播，播的同时合成第二句——首句延迟从"整段"降到"一句"。
+   *
+   * 合成与播放要分开：`synthesizeSpeech` 只出音频与时长，`playAudio` 才出声，
+   * 这样"播放当前句"和"合成下一句"能重叠。
+   */
   const startSpeaking = useCallback(
     (text: string) => {
       if (speakTimer.current !== null) {
@@ -92,35 +123,85 @@ export function ReaderView() {
         speakTimer.current = null;
       }
       setSpokenWord(null);
-      void ipc
-        .speakText(text)
-        .then((result) => {
-          const total = wordTimeline.reduce((sum, size) => sum + size, 0) || 1;
-          let elapsed = 0;
-          let index = 0;
-          const step = () => {
-            if (index >= wordTimeline.length) {
-              setSpokenWord(null);
-              speakTimer.current = null;
+
+      const sentences = splitSentences(text);
+      if (sentences.length === 0) {
+        return;
+      }
+
+      let index = 0;
+      let stopped = false;
+      let prefetched: Promise<SpeakResult> | null = null;
+      let wordOffset = 0;
+
+      const fail = (reason: unknown) => {
+        stopped = true;
+        setSpokenWord(null);
+        void ipc.logFrontend("error", "reader speak failed: " + String(reason));
+      };
+
+      const highlightSentence = (sentence: string, durationSecs: number) => {
+        const sizes = tokenize(sentence)
+          .filter((token) => token.kind === "word")
+          .map((token) => token.value.length);
+        const total = sizes.reduce((sum, size) => sum + size, 0) || 1;
+        let local = 0;
+        const step = () => {
+          if (stopped || local >= sizes.length) {
+            if (!stopped) {
+              wordOffset += sizes.length;
+            }
+            return;
+          }
+          setSpokenWord(wordOffset + local);
+          const share = ((sizes[local] ?? 1) / total) * durationSecs * 1000;
+          local += 1;
+          speakTimer.current = window.setTimeout(step, Math.max(share, 60));
+        };
+        step();
+      };
+
+      const playNext = () => {
+        if (stopped) {
+          return;
+        }
+        if (index >= sentences.length) {
+          setSpokenWord(null);
+          speakTimer.current = null;
+          return;
+        }
+        const current = index;
+        const task = prefetched ?? ipc.synthesizeSpeech(sentences[current]!);
+        prefetched = null;
+
+        void task
+          .then((result) => {
+            if (stopped) {
               return;
             }
-            setSpokenWord(index);
-            const share = ((wordTimeline[index] ?? 1) / total) * result.durationSecs * 1000;
-            elapsed += share;
-            index += 1;
-            speakTimer.current = window.setTimeout(step, Math.max(share, 60));
-          };
-          step();
-          void ipc.logFrontend(
-            "info",
-            `speak ${result.durationSecs.toFixed(2)}s words=${wordTimeline.length} budget=${elapsed.toFixed(0)}ms`,
-          );
-        })
-        .catch((reason: unknown) => {
-          void ipc.logFrontend("error", "reader speak failed: " + String(reason));
-        });
+            void ipc.playAudio(result.path).catch(fail);
+            highlightSentence(sentences[current]!, result.durationSecs);
+
+            // 一边播一边把下一句合成好
+            if (current + 1 < sentences.length) {
+              prefetched = ipc.synthesizeSpeech(sentences[current + 1]!);
+              // 提前挂上错误处理，避免未捕获的 rejection
+              void prefetched.catch(fail);
+            }
+
+            index = current + 1;
+            speakTimer.current = window.setTimeout(
+              playNext,
+              Math.max(result.durationSecs * 1000, 80),
+            );
+          })
+          .catch(fail);
+      };
+
+      playNext();
+      void ipc.logFrontend("info", `speak stream sentences=${sentences.length}`);
     },
-    [wordTimeline],
+    [],
   );
 
   // 组件卸载时清掉定时器
@@ -155,6 +236,7 @@ export function ReaderView() {
           return;
         }
         setContent(payload);
+        contentRef.current = payload.text;
 
         const texts = payload.imageBlocks.length > 0
           ? payload.imageBlocks.map((block) => block.text)
@@ -259,6 +341,16 @@ export function ReaderView() {
 
     let disposed = false;
     let unlisten: (() => void) | undefined;
+    // 冒烟：Rust 侧请求"立刻朗读一次"，用于验证流式流水线（正文见 docs）
+    let unlistenSpeak: (() => void) | undefined;
+    void listen("reader://autospeak", () => {
+      startSpeaking(contentRef.current ?? "");
+    })
+      .then((fn) => {
+        unlistenSpeak = fn;
+      })
+      .catch(() => undefined);
+
     void onReaderReload(() => {
       void ipc.logFrontend("info", "reader reload received");
       load();
@@ -274,6 +366,7 @@ export function ReaderView() {
 
     return () => {
       disposed = true;
+      unlistenSpeak?.();
       unlisten?.();
       window.removeEventListener("keydown", onKeyDown);
     };

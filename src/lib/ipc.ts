@@ -77,7 +77,12 @@ export const ipc = {
     withRetry("model_status", () => invoke<ModelStatus>("model_status")),
   openModelDir: (kind: "ocr" | "tts") =>
     invoke<void>("open_model_dir", { kind }),
-  /** 朗读一段中文（模型懒加载，第一次会慢）。 */
+  /** 只合成不播放（流式朗读用）。 */
+  synthesizeSpeech: (text: string) =>
+    invoke<SpeakResult>("synthesize_speech", { text }),
+  /** 播放一个已合成好的 WAV。 */
+  playAudio: (path: string) => invoke<void>("play_audio", { path }),
+  /** 朗读一段文本（合成 + 播放，一次性）。 */
   speakText: (text: string) => invoke<SpeakResult>("speak_text", { text }),
   stopSpeaking: () => invoke<void>("stop_speaking"),
   speechReady: () => withRetry("speech_ready", () => invoke<boolean>("speech_ready")),

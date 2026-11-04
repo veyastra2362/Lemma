@@ -370,7 +370,31 @@ pub async fn speak_text(app: AppHandle, text: String) -> Result<SpeakResult, Str
     Ok(SpeakResult {
         duration_secs: duration,
         synthesis_ms,
+        path: path.display().to_string(),
     })
+}
+
+/// 只合成、不播放：流式朗读要先拿到音频与时长，再自己排播放节奏。
+#[tauri::command]
+pub async fn synthesize_speech(app: AppHandle, text: String) -> Result<SpeakResult, String> {
+    let speed = app
+        .state::<crate::core::settings::SettingsStore>()
+        .get()
+        .speech_speed;
+    let started = std::time::Instant::now();
+    let phonemes = crate::core::tts::phonemes_for_text(&text)?;
+    let speech = crate::core::tts::worker::speak(&phonemes, speed)?;
+    Ok(SpeakResult {
+        duration_secs: speech.duration_secs,
+        synthesis_ms: started.elapsed().as_secs_f64() * 1000.0,
+        path: speech.path.display().to_string(),
+    })
+}
+
+/// 播放一个已经合成好的 WAV（异步，立即返回）。
+#[tauri::command]
+pub fn play_audio(path: String) -> Result<(), String> {
+    crate::platform::play_wav(std::path::Path::new(&path))
 }
 
 /// 停止朗读。
@@ -390,6 +414,8 @@ pub fn speech_ready() -> bool {
 pub struct SpeakResult {
     pub duration_secs: f32,
     pub synthesis_ms: f64,
+    /// 合成出来的 WAV 路径（流式朗读要用它自己排播放）。
+    pub path: String,
 }
 
 /// 翻译一段文本。走 `core::translate` 的分级路由 + 缓存。
