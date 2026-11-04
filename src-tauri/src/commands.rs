@@ -166,7 +166,7 @@ pub async fn translate_text(
 /// 查一个词（Deck 下探用）。未收录返回 null，不是错误。
 #[tauri::command]
 pub fn lookup_word(word: String) -> Option<crate::core::dict::Entry> {
-    crate::core::dict::lookup_global(&word)
+    crate::core::dict::lookup_any(&word)
 }
 
 /// 按内容高度调整 HUD（前端量出来之后调用）。

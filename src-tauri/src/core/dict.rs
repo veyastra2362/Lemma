@@ -356,6 +356,21 @@ pub fn open_default() -> Result<std::sync::Arc<DictStore>, String> {
     Ok(store)
 }
 
+/// 查词：含汉字查中文表，否则查英文表。UI 只需要这一个入口。
+pub fn lookup_any(word: &str) -> Option<Entry> {
+    let store = global()?;
+    let has_cjk = word.chars().any(crate::core::segment::is_cjk);
+    if has_cjk {
+        store
+            .get_zh(word)
+            .ok()
+            .flatten()
+            .or_else(|| store.get(word).ok().flatten())
+    } else {
+        store.get(word).ok().flatten()
+    }
+}
+
 /// 用全局词库查词；词库没装就返回 None。
 pub fn lookup_global(word: &str) -> Option<Entry> {
     global().and_then(|store| store.get(word).ok().flatten())

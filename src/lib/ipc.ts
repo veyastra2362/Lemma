@@ -92,6 +92,11 @@ export function onHudPresented(
   );
 }
 
+/** 双栏窗口每次被打开时，Rust 会广播这个事件要求重新拉内容。 */
+export function onReaderReload(handler: () => void): Promise<UnlistenFn> {
+  return listen("reader://reload", () => handler());
+}
+
 /** 仅用于诊断：Rust 侧发起的 IPC 冒烟（`LEMMA_READER_SMOKE_IPC`）。 */
 export function onReaderSmoke(
   handler: (text: string) => void,

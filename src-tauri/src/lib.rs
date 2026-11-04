@@ -146,8 +146,14 @@ pub fn run() {
                 let handle = handle.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
+                    let first = text.clone();
                     if let Some(window) = handle.get_webview_window(shell::HUD_LABEL) {
-                        let _ = window.emit("reader://smoke", text);
+                        let _ = window.emit("reader://smoke", first);
+                    }
+                    // 第二次换内容，用来验证"窗口复用后内容会刷新"。
+                    tokio::time::sleep(std::time::Duration::from_millis(3500)).await;
+                    if let Some(window) = handle.get_webview_window(shell::HUD_LABEL) {
+                        let _ = window.emit("reader://smoke", format!("{text} SECOND-OPEN"));
                     }
                 });
             }

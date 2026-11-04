@@ -297,6 +297,10 @@ pub fn present_reader<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
 
     PlatformWindow::new(window.clone()).force_show();
     window.set_focus().map_err(|e| e.to_string())?;
+
+    // 窗口是隐藏复用的，不会重新挂载——必须显式通知它重新拉内容，
+    // 否则第二次打开还停在第一次的文本上。
+    let _ = window.emit("reader://reload", ());
     Ok(())
 }
 
