@@ -261,7 +261,72 @@ fn wire_settings_close<R: Runtime>(window: &WebviewWindow<R>) {
 /// 注意这里必须分两步：先 `window.show()` 让宿主窗口出来，再显式给
 /// WebView 控制器同步一次尺寸并 `webview.show()`。只做前者时，之前被隐藏
 /// 过或尺寸为 0 的 WebView2 会在透明客户区外面留一圈可见边框。
+pub const REGION_LABEL: &str = "ocr-region";
 pub const READER_LABEL: &str = "reader";
+
+/// 显示框选窗口，铺满整个虚拟桌面（含多屏负坐标）。
+pub fn present_region_select<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let window = ensure_window(app, REGION_LABEL)?;
+    wire_region_close(&window);
+
+    // 先铺满虚拟桌面再显示，否则用户看到的是默认尺寸
+    if let Some(bounds) = crate::platform::virtual_screen_bounds() {
+        let _ = window.set_position(tauri::PhysicalPosition::new(
+            bounds.origin.x,
+            bounds.origin.y,
+        ));
+        let _ = window.set_size(tauri::PhysicalSize::new(
+            bounds.size.width,
+            bounds.size.height,
+        ));
+    }
+
+    window.show().map_err(|e| e.to_string())?;
+    let size = window.inner_size().map_err(|e| e.to_string())?;
+    if size.width > 0 && size.height > 0 {
+        let webview: &tauri::Webview<R> = window.as_ref();
+        webview.set_size(size).map_err(|e| e.to_string())?;
+        webview.show().map_err(|e| e.to_string())?;
+    }
+    PlatformWindow::new(window.clone()).force_show();
+    window.set_focus().map_err(|e| e.to_string())?;
+    let _ = window.emit("region://begin", ());
+    Ok(())
+}
+
+/// 从任意线程打开框选层。
+pub fn present_region_select_on_main<R: Runtime>(app: &AppHandle<R>) {
+    let runner = app.clone();
+    let inner = app.clone();
+    let _ = runner.run_on_main_thread(move || {
+        if let Err(error) = present_region_select(&inner) {
+            logs::line(format!("region select failed: {error}"));
+        }
+    });
+}
+
+/// 关掉框选层（截屏前必须先藏起来，否则会把自己也截进去）。
+pub fn hide_region_select<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(REGION_LABEL) {
+        let _ = window.hide();
+        PlatformWindow::new(window).force_hide();
+    }
+}
+
+fn wire_region_close<R: Runtime>(window: &WebviewWindow<R>) {
+    static WIRED: AtomicBool = AtomicBool::new(false);
+    if WIRED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let win = window.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = win.hide();
+            PlatformWindow::new(win.clone()).force_hide();
+        }
+    });
+}
 
 /// 显示双栏窗口。与设置窗口同样的两步显示 + 懒创建。
 pub fn present_reader<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {

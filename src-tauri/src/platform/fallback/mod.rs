@@ -26,3 +26,8 @@ pub(crate) use clipboard::{copy_selection, restore_clipboard};
 
 mod console;
 pub(crate) use console::attach_parent as attach_parent_console;
+
+/// 非 Windows 平台暂不支持整桌面边界。
+pub fn virtual_screen_bounds() -> Option<crate::platform::placement::Rect> {
+    None
+}

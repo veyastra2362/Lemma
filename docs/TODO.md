@@ -39,13 +39,15 @@ CC-CEDICT 12.5 万词条 + 逆向最大匹配；中文取词能切词、能查�
 + rec（长行切段 + CTC 解码）；热态 156–163 ms；`lemma.exe --ocr <image>` 可无头验证。
 取舍见 `.agents/notes/implemented/feature/2026-11-04-ocr-integration.md`。
 
-**剩余（M4c）**：
-- 框选窗口接线（`ocr-region` 窗口已声明，未接）
-- 截图 → OCR → 双栏/覆盖层串联
-- 真实截图验证与深色主题白字标定（当前只验过合成白底黑字）
-- 主进程内 OCR 常驻内存实测（探针 ~125 MB，需按 PERF.md 口径复测）
-- ~~残余精度~~（已解决）：基准集 **CER 0.000**，见 `docs/OCR-CALIBRATION.md`。真实截图仍需复验
+**M4c 已完成（2026-11-04）**：GDI 截屏（14 ms）+ 框选层（铺满虚拟桌面）+ 复用取词链路
+（OCR 文本直接进 HUD / 翻译 / 双栏）。入口：托盘「截图识别…」。
+取舍见 `.agents/notes/implemented/feature/2026-11-04-region-capture-ocr.md`。
 
+**剩余**：
+- OCR 热键（目前只有托盘菜单；形态稳定后加设置项，与双栏同思路）
+- **多显示器不同 DPI 时框选坐标会偏**（单个跨屏窗口只按主窗口 DPI 换算）
+- 单窗口捕获（WGC）与 HDR 支持（BitBlt 截不到受保护内容）
+- 深色 UI 低对比度白字的准确率未量化
 ### 5. 离线朗读（M5）
 Kokoro ONNX，流式分句 + 首音延迟 < 400ms + 跟读高亮。
 

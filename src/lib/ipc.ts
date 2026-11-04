@@ -70,6 +70,19 @@ export const ipc = {
   resizeHud: (height: number) => invoke<void>("resize_hud", { height }),
   /** Deck 下探查词。未收录返回 null。 */
   lookupWord: (word: string) => invoke<Entry | null>("lookup_word", { word }),
+  /** 框选区域（物理像素）→ 截屏 → OCR → 弹 HUD。 */
+  runRegionOcr: (rect: { x: number; y: number; width: number; height: number }) =>
+    invoke<Capture>("run_region_ocr", rect),
+  startRegionSelect: () => invoke<void>("start_region_select"),
+  cancelRegionSelect: () => invoke<void>("cancel_region_select"),
+  /** 框选窗口左上角在虚拟桌面里的物理坐标（多屏可能为负）。 */
+  regionWindowOrigin: async (): Promise<{ x: number; y: number }> => {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const position = await getCurrentWindow().outerPosition();
+    const scale = window.devicePixelRatio || 1;
+    return { x: Math.round(position.x / scale) * scale, y: Math.round(position.y / scale) * scale };
+  },
+
   /** 打开双栏窗口并显示这段文本。 */
   openReader: (text: string, source: string) =>
     invoke<void>("open_reader", { text, source }),

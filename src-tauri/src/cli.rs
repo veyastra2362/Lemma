@@ -62,6 +62,11 @@ pub fn try_run() -> bool {
             import_cedict(&args);
             true
         }
+        "--capture" => {
+            crate::platform::console::attach_parent();
+            capture(&args);
+            true
+        }
         "--ocr-bench" => {
             crate::platform::console::attach_parent();
             ocr_bench(&args);
@@ -206,6 +211,44 @@ fn import_dict(args: &[String]) {
 
 /// 翻译一段文本。不启动 GUI，用于验证翻译链路与测时。
 /// 无头验证分词：`lemma.exe --segment "当前进度：多服务商"`
+/// 截取屏幕矩形并保存，用于无头验证截图链路。
+fn capture(args: &[String]) {
+    let (Some(rect), Some(out)) = (args.get(1), args.get(2)) else {
+        eprintln!("用法：lemma.exe --capture <x,y,w,h> <out.png>");
+        return;
+    };
+    let parts: Vec<i32> = rect
+        .split(',')
+        .filter_map(|value| value.trim().parse().ok())
+        .collect();
+    if parts.len() != 4 {
+        eprintln!("矩形格式应为 x,y,w,h");
+        return;
+    }
+
+    let started = Instant::now();
+    match crate::platform::capture_region(parts[0], parts[1], parts[2] as u32, parts[3] as u32) {
+        Ok(shot) => {
+            match image::save_buffer(
+                out,
+                &shot.pixels,
+                shot.width,
+                shot.height,
+                image::ColorType::Rgb8,
+            ) {
+                Ok(()) => println!(
+                    "已保存 {}×{} → {out}（{:.0} ms）",
+                    shot.width,
+                    shot.height,
+                    started.elapsed().as_secs_f64() * 1000.0
+                ),
+                Err(error) => eprintln!("写文件失败：{error}"),
+            }
+        }
+        Err(error) => eprintln!("截图失败：{error}"),
+    }
+}
+
 /// OCR 基准：目录下每张图配一个同名 `.txt` 参考答案，算字符错误率（CER）。
 ///
 /// 加 `LEMMA_OCR_SCALE=1.5` 可先放大再识别（小字号需要）。

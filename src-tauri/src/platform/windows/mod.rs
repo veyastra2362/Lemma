@@ -64,3 +64,28 @@ pub(crate) use clipboard::{copy_selection, restore_clipboard};
 
 mod console;
 pub(crate) use console::attach_parent as attach_parent_console;
+
+/// 整个虚拟桌面的物理像素边界（多屏时含负坐标）。
+pub fn virtual_screen_bounds() -> Option<crate::platform::placement::Rect> {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
+    };
+
+    let rect = RECT {
+        left: unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) },
+        top: unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) },
+        right: unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) },
+        bottom: unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) },
+    };
+    let width = (rect.right - rect.left).max(1) as u32;
+    let height = (rect.bottom - rect.top).max(1) as u32;
+    Some(crate::platform::placement::Rect::new(
+        crate::platform::placement::Point {
+            x: rect.left,
+            y: rect.top,
+        },
+        crate::platform::placement::Size { width, height },
+    ))
+}

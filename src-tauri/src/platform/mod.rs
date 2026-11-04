@@ -7,6 +7,7 @@ pub mod clipboard;
 pub mod console;
 pub mod keyboard;
 pub mod placement;
+pub mod screen;
 pub mod uia;
 pub mod window;
 
@@ -21,6 +22,41 @@ mod fallback;
 use fallback as backend;
 
 pub use window::Window as PlatformWindow;
+
+/// 整个虚拟桌面（所有显示器）的物理像素边界。
+pub fn virtual_screen_bounds() -> Option<placement::Rect> {
+    backend::virtual_screen_bounds()
+}
+
+/// 截取屏幕上的一块矩形（物理像素，允许负坐标）。
+pub fn capture_region(
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<screen::Screenshot, String> {
+    screen::capture_region(x, y, width, height)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn backend_capture_region(
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<screen::Screenshot, String> {
+    screen::windows_impl::capture(x, y, width, height)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn backend_capture_region(
+    _x: i32,
+    _y: i32,
+    _width: u32,
+    _height: u32,
+) -> Result<screen::Screenshot, String> {
+    Err("当前平台暂不支持屏幕截图".to_string())
+}
 
 /// 当前光标位置（物理像素，可为负值，多屏副屏）。
 pub fn cursor_position() -> Option<placement::Point> {

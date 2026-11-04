@@ -65,6 +65,9 @@ pub fn run() {
             commands::lookup_word,
             commands::translate_text,
             commands::open_reader,
+            commands::run_region_ocr,
+            commands::start_region_select,
+            commands::cancel_region_select,
             commands::reader_content,
             commands::close_reader,
             commands::resize_hud,
@@ -158,6 +161,28 @@ pub fn run() {
                 });
             }
 
+            // 区域 OCR 冒烟：LEMMA_REGION_SMOKE="x,y,w,h" 直接跑「截图→OCR→装取词」整条链路。
+            if let Ok(rect) = std::env::var("LEMMA_REGION_SMOKE") {
+                let parts: Vec<i32> = rect
+                    .split(',')
+                    .filter_map(|value| value.trim().parse().ok())
+                    .collect();
+                if parts.len() == 4 {
+                    match commands::run_region_capture(
+                        parts[0],
+                        parts[1],
+                        parts[2] as u32,
+                        parts[3] as u32,
+                    ) {
+                        Ok(capture) => logs::line(format!(
+                            "region smoke ok chars={} text={}",
+                            capture.text.chars().count(),
+                            capture.text.replace('\n', " / ")
+                        )),
+                        Err(error) => logs::line(format!("region smoke failed: {error}")),
+                    }
+                }
+            }
             // 冒烟入口：带上文本启动即可直接开双栏，不依赖窗口焦点。
             // 用法：$env:LEMMA_READER_SMOKE="some text"; lemma.exe
             if let Ok(text) = std::env::var("LEMMA_READER_SMOKE") {

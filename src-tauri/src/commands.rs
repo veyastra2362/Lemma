@@ -112,6 +112,67 @@ pub fn close_settings(app: AppHandle) {
     crate::core::shell::close_settings(&app);
 }
 
+/// 框选区域（物理像素）→ 截屏 → OCR → 装成一次取词 → 弹 HUD。
+///
+/// 必须先藏框选层再截屏，否则会把遮罩自己截进去；`sleep` 是等窗口真正消失的代价，
+/// 实测 120 ms 足够（少了偶尔还能截到残影）。
+#[tauri::command]
+pub async fn run_region_ocr(
+    app: AppHandle,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<crate::core::selection::Capture, String> {
+    crate::core::shell::hide_region_select(&app);
+    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+
+    let capture = run_region_capture(x, y, width, height)?;
+    crate::core::shell::present(&app);
+    Ok(capture)
+}
+
+/// 截图 + OCR + 装成取词。命令与冒烟共用这一份，避免两条实现漂移。
+pub(crate) fn run_region_capture(
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<crate::core::selection::Capture, String> {
+    let started = std::time::Instant::now();
+    let shot = crate::platform::capture_region(x, y, width, height)?;
+    let capture_ms = started.elapsed().as_secs_f64() * 1000.0;
+
+    if !crate::core::ocr::models_ready() {
+        return Err("OCR 模型未安装：把 det.onnx / rec.onnx / ppocr_keys_v1.txt 放进应用数据目录的 ocr-models".to_string());
+    }
+    let blocks = crate::core::ocr::recognize_scaled(&shot.pixels, shot.width, shot.height, 1.0)?;
+    let text = crate::core::ocr::blocks_to_text(&blocks);
+    if text.trim().is_empty() {
+        return Err("这块区域里没识别到文字".to_string());
+    }
+
+    let mut capture = crate::core::selection::store_ocr(text, "截图".to_string());
+    capture.elapsed_ms = capture_ms;
+    crate::core::logs::line(format!(
+        "region ocr capture={capture_ms:.0}ms boxes={} chars={}",
+        blocks.len(),
+        capture.text.chars().count()
+    ));
+    Ok(capture)
+}
+
+#[tauri::command]
+pub fn start_region_select(app: AppHandle) -> Result<(), String> {
+    crate::core::shell::present_region_select(&app)
+}
+
+/// 取消框选（Esc 或右键）。
+#[tauri::command]
+pub fn cancel_region_select(app: AppHandle) {
+    crate::core::shell::hide_region_select(&app);
+}
+
 /// 打开双栏窗口并显示这段文本（HUD 的「双栏」按钮走这里）。
 /// 打开双栏窗口。
 ///

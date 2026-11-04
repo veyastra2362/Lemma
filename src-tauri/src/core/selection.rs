@@ -25,6 +25,8 @@ const CLIPBOARD_TIMEOUT: Duration = Duration::from_millis(450);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Tier {
+    /// 屏幕区域 OCR。
+    Ocr,
     /// UIA 选区直读。
     Selection,
     /// UIA 光标所在词。
@@ -36,6 +38,7 @@ pub enum Tier {
 impl Tier {
     pub fn label(self) -> &'static str {
         match self {
+            Tier::Ocr => "截图",
             Tier::Selection => "选区",
             Tier::Word => "光标词",
             Tier::Clipboard => "剪贴板",
@@ -94,6 +97,36 @@ pub fn pick_uia(outcome: &UiaOutcome, mode: CaptureMode) -> Option<(Tier, String
         CaptureMode::HoverOnly => word,
         CaptureMode::Auto => selection.or(word),
     }
+}
+
+/// 把 OCR 结果装成一次「取词」，复用后面所有链路（HUD / 翻译 / 双栏）。
+///
+/// 注意：`text` 用整段 OCR 文本，`sentence` 取第一行——
+/// HUD 的句卡片只显示一句，多了会挤爆。
+pub fn store_ocr(text: String, app: String) -> Capture {
+    let first_line = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("")
+        .to_string();
+    let needs_translation = !is_single_word(&text);
+    let capture = Capture {
+        text: text.clone(),
+        sentence: first_line,
+        paragraph: text,
+        tier: Some(Tier::Ocr),
+        entry: None,
+        needs_translation,
+        candidates: Vec::new(),
+        app,
+        elapsed_ms: 0.0,
+        error: None,
+    };
+    if let Ok(mut slot) = slot().lock() {
+        *slot = Some(capture.clone());
+    }
+    capture
 }
 
 /// 中文取词：分词出候选。
