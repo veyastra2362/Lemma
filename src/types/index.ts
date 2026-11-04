@@ -59,6 +59,13 @@ export interface ReaderContent {
   image: ReaderImage | null;
 }
 
+export interface ModelStatus {
+  ocrReady: boolean;
+  ocrDir: string;
+  ttsReady: boolean;
+  ttsDir: string;
+}
+
 export interface SpeakResult {
   durationSecs: number;
   synthesisMs: number;

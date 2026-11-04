@@ -4,7 +4,7 @@ import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t } from "../i18n";
 import { ipc, isTauri } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
-import type { CaptureMode, CardSections, Settings } from "../types";
+import type { CaptureMode, CardSections, ModelStatus, Settings } from "../types";
 import { formatHotkey } from "../utils/hotkey";
 
 const ROADMAP = [
@@ -139,6 +139,7 @@ export function SettingsView() {
   const setSettings = useAppStore((state) => state.setSettings);
 
   const [recordingTarget, setRecordingTarget] = useState<null | "hud" | "reader" | "ocr">(null);
+  const [models, setModels] = useState<ModelStatus | null>(null);
   const recording = recordingTarget !== null;
   const [error, setError] = useState<string | null>(null);
 
@@ -169,6 +170,17 @@ export function SettingsView() {
     },
     [settings, setSettings],
   );
+
+  // 模型状态：装没装、装在哪
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+    void ipc
+      .modelStatus()
+      .then(setModels)
+      .catch(() => setModels(null));
+  }, []);
 
   // Esc 关闭设置窗口（录制热键时由录制逻辑优先处理）。
   useEffect(() => {
@@ -322,6 +334,57 @@ export function SettingsView() {
           </div>
         </section>
 
+        {/* ---- 本地模型 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionModels")}
+          </h2>
+          <p className="mb-2 text-[11px] leading-relaxed text-[var(--hud-muted)]">
+            {t("settingsModelsHint")}
+          </p>
+          <div className="space-y-1.5">
+            {[
+              { kind: "ocr" as const, label: t("settingsModelOcr"), ready: models?.ocrReady, dir: models?.ocrDir },
+              { kind: "tts" as const, label: t("settingsModelTts"), ready: models?.ttsReady, dir: models?.ttsDir },
+            ].map((row) => (
+              <div
+                key={row.kind}
+                className="rounded-lg border border-white/10 px-3 py-2"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px]">{row.label}</span>
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] ${
+                      row.ready
+                        ? "bg-emerald-500/15 text-emerald-300"
+                        : "bg-amber-500/15 text-amber-300"
+                    }`}
+                  >
+                    {row.ready ? t("settingsModelReady") : t("settingsModelMissing")}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-[var(--hud-muted)]">
+                    {row.dir ?? ""}
+                  </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    void ipc.openModelDir(row.kind).catch((reason: unknown) => {
+                      setError(reason instanceof Error ? reason.message : String(reason));
+                    });
+                  }}
+                  className="shrink-0 rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
+                >
+                  {t("settingsModelOpen")}
+                </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* ---- 朗读 ---- */}
         <section className="mt-5">
           <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
@@ -366,7 +429,7 @@ export function SettingsView() {
             <Radio
               active={settings?.ocrHotkeyEnabled === false}
               label={t("settingsReaderOff")}
-              hint={t("hudHintSettings")}
+              hint={t("settingsOcrToggleOffHint")}
               onClick={() => apply({ ocrHotkeyEnabled: false })}
             />
             {settings && settings.ocrHotkeyEnabled !== false && (

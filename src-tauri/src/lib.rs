@@ -67,6 +67,8 @@ pub fn run() {
             commands::speak_text,
             commands::stop_speaking,
             commands::speech_ready,
+            commands::model_status,
+            commands::open_model_dir,
             commands::open_reader,
             commands::run_region_ocr,
             commands::start_region_select,
@@ -201,6 +203,13 @@ pub fn run() {
                         ));
                     }
                     Err(error) => logs::line(format!("speak smoke failed: {error}")),
+                }
+            }
+            // 设置窗口冒烟：用于截图核对布局（不点托盘也能看）
+            if std::env::var("LEMMA_SETTINGS_SMOKE").is_ok() {
+                match shell::present_settings(handle) {
+                    Ok(()) => logs::line("settings smoke presented"),
+                    Err(error) => logs::line(format!("settings smoke failed: {error}")),
                 }
             }
             // HUD 定位冒烟：LEMMA_HUD_SMOKE=1 时启动后直接弹 HUD，用来验证多屏定位。

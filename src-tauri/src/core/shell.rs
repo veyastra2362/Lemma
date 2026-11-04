@@ -4,7 +4,7 @@
 //! `show` / `hide` / `set_position`。绝不在呼出路径上重建窗口——那会带来
 //! 白屏闪烁 + 几十毫秒的 WebView 初始化 + 内存泄漏。
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Runtime, WebviewWindow};
 
@@ -133,6 +133,8 @@ pub fn resize_hud<R: Runtime>(app: &AppHandle<R>, height: f64) -> Result<(), Str
         .get()
         .clamped_max_height();
     let height = height.clamp(HUD_MIN_HEIGHT, max);
+    // 记下来供下一次定位使用（下次呼出时窗口尺寸还是这一帧的，正好用得上）
+    note_hud_height(height.round() as u32);
 
     window
         .set_size(tauri::Size::Logical(tauri::LogicalSize::new(
@@ -178,6 +180,20 @@ pub fn toggle_on_main<R: Runtime>(app: &AppHandle<R>) {
 }
 
 /// 把 HUD 挪到光标附近，并钳制在光标所在显示器的工作区内。
+/// 最近一次由内容驱动的 HUD 高度（前端 resize 时回报）。
+///
+/// 为什么需要：`reposition` 在内容渲染**之前**执行，此时 `outer_size()` 还是上一次的高度。
+/// 上一屏内容很高（例如长句）时，按大高度往光标下方放会溢出，于是翻到上方甚至被钳到屏顶；
+/// 等新内容变矮，位置就停在屏顶不回来了（多屏实测复现）。
+static LAST_HUD_HEIGHT: AtomicU32 = AtomicU32::new(0);
+
+/// 前端报告新的内容高度时记下来（供下一次定位用）。
+pub fn note_hud_height(height: u32) {
+    if height > 0 {
+        LAST_HUD_HEIGHT.store(height, Ordering::Relaxed);
+    }
+}
+
 fn reposition<R: Runtime>(window: &WebviewWindow<R>) {
     let Some(cursor) = platform::cursor_position() else {
         return;
@@ -185,7 +201,14 @@ fn reposition<R: Runtime>(window: &WebviewWindow<R>) {
     let Ok(size) = window.outer_size() else {
         return;
     };
-    if size.width == 0 || size.height == 0 {
+    // 用"按内容估算的高度"而不是过期的窗口尺寸
+    let remembered = LAST_HUD_HEIGHT.load(Ordering::Relaxed);
+    let height = if remembered > 0 {
+        remembered
+    } else {
+        size.height
+    };
+    if size.width == 0 || height == 0 {
         // 首次呼出前某些平台会报 0 尺寸，此时保持配置里的居中位置。
         return;
     }
@@ -197,7 +220,7 @@ fn reposition<R: Runtime>(window: &WebviewWindow<R>) {
         cursor,
         placement::Size {
             width: size.width,
-            height: size.height,
+            height,
         },
         work_area,
         CURSOR_GAP,

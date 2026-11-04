@@ -7,6 +7,7 @@ import type {
   PaintSample,
   ReaderContent,
   RuntimeStats,
+  ModelStatus,
   Settings,
   SpeakResult,
   TranslateResult,
@@ -71,6 +72,11 @@ export const ipc = {
   resizeHud: (height: number) => invoke<void>("resize_hud", { height }),
   /** Deck 下探查词。未收录返回 null。 */
   lookupWord: (word: string) => invoke<Entry | null>("lookup_word", { word }),
+  /** 本地模型（OCR / TTS）的安装状态与目录。 */
+  modelStatus: () =>
+    withRetry("model_status", () => invoke<ModelStatus>("model_status")),
+  openModelDir: (kind: "ocr" | "tts") =>
+    invoke<void>("open_model_dir", { kind }),
   /** 朗读一段中文（模型懒加载，第一次会慢）。 */
   speakText: (text: string) => invoke<SpeakResult>("speak_text", { text }),
   stopSpeaking: () => invoke<void>("stop_speaking"),

@@ -272,6 +272,51 @@ pub fn close_reader(app: AppHandle) {
     crate::core::shell::close_reader(&app);
 }
 
+/// 本地模型（OCR / TTS）的安装状态与目录。
+///
+/// 模型权重不进仓库也不进安装包（`*.onnx` 被 .gitignore 挡、体积几十到上百 MB），
+/// 所以必须让用户能看到"装没装、装在哪、一键打开目录去放"。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelStatus {
+    pub ocr_ready: bool,
+    pub ocr_dir: String,
+    pub tts_ready: bool,
+    pub tts_dir: String,
+}
+
+#[tauri::command]
+pub fn model_status() -> ModelStatus {
+    ModelStatus {
+        ocr_ready: crate::core::ocr::models_ready(),
+        ocr_dir: crate::core::ocr::model_dir()
+            .map(|dir| dir.display().to_string())
+            .unwrap_or_default(),
+        tts_ready: crate::core::tts::models_ready(),
+        tts_dir: crate::core::tts::model_dir()
+            .map(|dir| dir.display().to_string())
+            .unwrap_or_default(),
+    }
+}
+
+/// 打开模型目录（不存在就先建出来，免得用户点了个不存在的路径）。
+#[tauri::command]
+pub fn open_model_dir(app: AppHandle, kind: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let dir = match kind.as_str() {
+        "ocr" => crate::core::ocr::model_dir(),
+        "tts" => crate::core::tts::model_dir(),
+        other => return Err(format!("未知的模型类型：{other}")),
+    }
+    .ok_or_else(|| "拿不到应用数据目录".to_string())?;
+
+    std::fs::create_dir_all(&dir).map_err(|e| format!("建目录失败：{e}"))?;
+    app.opener()
+        .open_path(dir.display().to_string(), None::<&str>)
+        .map_err(|e| format!("打开目录失败：{e}"))
+}
+
 /// 朗读一段中文。
 ///
 /// **必须是 async**：合成一次要几秒，跑在主线程会把整个 UI 冻住
