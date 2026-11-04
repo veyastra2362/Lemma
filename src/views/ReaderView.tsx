@@ -39,6 +39,9 @@ export function ReaderView() {
   const [mode, setMode] = useState<ViewMode>("side");
   const [hovered, setHovered] = useState<number | null>(null);
   const [speechReady, setSpeechReady] = useState(false);
+  /** 跟读：正在朗读的词（全局序号），null 表示没在朗读。 */
+  const [spokenWord, setSpokenWord] = useState<number | null>(null);
+  const speakTimer = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const imageBoxRef = useRef<HTMLDivElement>(null);
@@ -52,6 +55,83 @@ export function ReaderView() {
   const sources = isImage
     ? (content?.imageBlocks ?? []).map((block: ReaderBlock) => block.text)
     : (content?.blocks ?? []);
+
+  /** 全文的词序号表：每个词占多少字符，用于按时间线性插值。 */
+  const wordTimeline = (() => {
+    const list: number[] = []; // 每个词的字符数
+    for (const source of sources) {
+      for (const token of tokenize(source)) {
+        if (token.kind === "word") {
+          list.push(token.value.length);
+        }
+      }
+    }
+    return list;
+  })();
+
+  const stopSpeaking = useCallback(() => {
+    if (speakTimer.current !== null) {
+      window.clearTimeout(speakTimer.current);
+      speakTimer.current = null;
+    }
+    setSpokenWord(null);
+    void ipc.stopSpeaking();
+  }, []);
+
+  /**
+   * 跟读高亮。
+   *
+   * `PlaySound` 不汇报播放位置，所以这里按**字符权重**把总时长线性摊到每个词上：
+   * 长词占的时间多、短词少。顺序与合成时的音素顺序一致（同一段文本、同一个分词）。
+   * 这是估算而不是真同步，足够让视线跟着走；精确对齐需要换能报位置的播放后端。
+   */
+  const startSpeaking = useCallback(
+    (text: string) => {
+      if (speakTimer.current !== null) {
+        window.clearTimeout(speakTimer.current);
+        speakTimer.current = null;
+      }
+      setSpokenWord(null);
+      void ipc
+        .speakText(text)
+        .then((result) => {
+          const total = wordTimeline.reduce((sum, size) => sum + size, 0) || 1;
+          let elapsed = 0;
+          let index = 0;
+          const step = () => {
+            if (index >= wordTimeline.length) {
+              setSpokenWord(null);
+              speakTimer.current = null;
+              return;
+            }
+            setSpokenWord(index);
+            const share = ((wordTimeline[index] ?? 1) / total) * result.durationSecs * 1000;
+            elapsed += share;
+            index += 1;
+            speakTimer.current = window.setTimeout(step, Math.max(share, 60));
+          };
+          step();
+          void ipc.logFrontend(
+            "info",
+            `speak ${result.durationSecs.toFixed(2)}s words=${wordTimeline.length} budget=${elapsed.toFixed(0)}ms`,
+          );
+        })
+        .catch((reason: unknown) => {
+          void ipc.logFrontend("error", "reader speak failed: " + String(reason));
+        });
+    },
+    [wordTimeline],
+  );
+
+  // 组件卸载时清掉定时器
+  useEffect(
+    () => () => {
+      if (speakTimer.current !== null) {
+        window.clearTimeout(speakTimer.current);
+      }
+    },
+    [],
+  );
 
   const load = useCallback(() => {
     if (!isTauri()) {
@@ -246,26 +326,32 @@ export function ReaderView() {
 
   const current = drill[drill.length - 1];
 
-  const renderClickable = (text: string, muted: boolean) => (
-    <>
-      {tokenize(text).map((token, index) =>
-        token.kind === "word" ? (
-          <button
-            type="button"
-            key={`${index}-${token.value}`}
-            onClick={() => pushWord(token.value)}
-            className={`rounded-sm underline decoration-dotted underline-offset-2 transition hover:bg-white/10 hover:decoration-[var(--hud-accent)] ${
-              muted ? "decoration-white/15" : "decoration-white/25"
-            }`}
-          >
-            {token.value}
-          </button>
-        ) : (
-          <span key={`${index}-sep`}>{token.value}</span>
-        ),
-      )}
-    </>
-  );
+  const renderClickable = (text: string, muted: boolean, baseWord = -1) => {
+    // baseWord >= 0 时把该段之前的累计词数加上，得到"全文第几个词"，用于跟读高亮
+    let seen = 0;
+    return (
+      <>
+        {tokenize(text).map((token, index) => {
+          const wordIndex = token.kind === "word" ? baseWord + seen++ : -1;
+          const isSpoken = baseWord >= 0 && wordIndex === spokenWord;
+          return token.kind === "word" ? (
+            <button
+              type="button"
+              key={`${index}-${token.value}`}
+              onClick={() => pushWord(token.value)}
+              className={`rounded-sm underline decoration-dotted underline-offset-2 transition hover:bg-white/10 hover:decoration-[var(--hud-accent)] ${
+                muted ? "decoration-white/15" : "decoration-white/25"
+              } ${isSpoken ? "bg-[var(--hud-accent)]/35 text-white no-underline" : ""}`}
+            >
+              {token.value}
+            </button>
+          ) : (
+            <span key={`${index}-sep`}>{token.value}</span>
+          );
+        })}
+      </>
+    );
+  };
 
   /** 译文一栏：并排与覆盖两种形态共用。 */
   const renderTranslation = (index: number, compact: boolean) => {
@@ -386,15 +472,19 @@ export function ReaderView() {
           <button
             type="button"
             onClick={() => {
-              void ipc
-                .speakText(content?.text ?? "")
-                .catch((reason: unknown) => {
-                  void ipc.logFrontend("error", "reader speak failed: " + String(reason));
-                });
+              if (spokenWord !== null) {
+                stopSpeaking();
+              } else {
+                startSpeaking(content?.text ?? "");
+              }
             }}
-            className="ml-2 rounded border border-white/12 px-1.5 py-0.5 text-[11px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+            className={`ml-2 rounded border px-1.5 py-0.5 text-[11px] transition ${
+              spokenWord !== null
+                ? "border-[var(--hud-accent)] text-[var(--hud-accent)]"
+                : "border-white/12 text-[var(--hud-muted)] hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+            }`}
           >
-            {t("speakStart")}
+            {spokenWord !== null ? t("speakStop") : t("speakStart")}
           </button>
         )}
         <span className="ml-auto text-[11px] text-[var(--hud-muted)]">
@@ -510,14 +600,24 @@ export function ReaderView() {
                 ))}
               </div>
             ) : (
-              (content?.blocks ?? []).map((block, index) => (
-                <p
-                  key={index}
-                  className="mb-3 text-[13.5px] leading-[1.75] text-[var(--hud-text)]/90"
-                >
-                  {renderClickable(block, true)}
-                </p>
-              ))
+              (content?.blocks ?? []).map((block, index) => {
+                const baseWord = (content?.blocks ?? [])
+                  .slice(0, index)
+                  .reduce(
+                    (sum, item) =>
+                      sum +
+                      tokenize(item).filter((token) => token.kind === "word").length,
+                    0,
+                  );
+                return (
+                  <p
+                    key={index}
+                    className="mb-3 text-[13.5px] leading-[1.75] text-[var(--hud-text)]/90"
+                  >
+                    {renderClickable(block, true, baseWord)}
+                  </p>
+                );
+              })
             )}
           </div>
 

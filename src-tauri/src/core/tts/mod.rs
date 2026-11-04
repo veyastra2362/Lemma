@@ -8,6 +8,7 @@
 //! 3. **音素串走 tokenizer 白名单**：Kokoro 的 zh 词表只有 172 个符号，
 //!    任何不在表里的字符都会被静默丢弃——所以先按白名单过滤再查 id。
 
+pub mod english;
 pub mod phonemize;
 pub mod worker;
 
@@ -282,6 +283,27 @@ pub fn speak_phonemes(phonemes: &str, speed: f32) -> Result<Speech, String> {
     Ok(Speech { samples })
 }
 
+/// 英文词典文件名（cmudict）。
+const CMUDICT: &str = "cmudict.dict";
+
+/// 加载英文词典（存在才加载；没有就只支持中文）。
+pub fn ensure_english_dict() {
+    if english::ready() {
+        return;
+    }
+    if let Some(dir) = model_dir() {
+        let path = dir.join(CMUDICT);
+        if path.exists() {
+            match english::load(&path) {
+                Ok(()) => crate::core::logs::line("tts english dict loaded"),
+                Err(error) => crate::core::logs::line(format!("tts english dict: {error}")),
+            }
+        } else {
+            crate::core::logs::line("tts english dict missing（英文将读不出来）");
+        }
+    }
+}
+
 /// 把一段中文朗读出来（先分词按词查拼音，查不到退到单字）。
 pub fn speak_text(text: &str, speed: f32) -> Result<Speech, String> {
     let phonemes = phonemes_for_text(text)?;
@@ -296,6 +318,7 @@ pub fn speak_text(text: &str, speed: f32) -> Result<Speech, String> {
 /// 拼接方式与 misaki 一致：词内音节相连、词间空格、标点单独成段——
 /// 韵律靠"词边界 + 标点"驱动，逐音节加空格会听成"一个字一个字念"。
 pub fn phonemes_for_text(text: &str) -> Result<String, String> {
+    ensure_english_dict();
     let store = crate::core::dict::open_default()?;
     let mut units: Vec<String> = Vec::new();
 
@@ -345,15 +368,41 @@ pub fn phonemes_for_text(text: &str) -> Result<String, String> {
             continue;
         }
 
+        // 非汉字段：英文词走 CMU 词典，标点单独成段
+        let mut ascii_run = String::new();
         for ch in token.text.chars() {
+            if ch.is_alphabetic() && !crate::core::segment::is_cjk(ch) {
+                ascii_run.push(ch);
+                continue;
+            }
+            if !ascii_run.is_empty() {
+                let (ipa, missing) = english::phonemize_english(&ascii_run);
+                if !ipa.is_empty() {
+                    units.push(ipa);
+                }
+                if !missing.is_empty() {
+                    crate::core::logs::line(format!(
+                        "tts english skipped {} word(s): {}",
+                        missing.len(),
+                        missing.join(",")
+                    ));
+                }
+                ascii_run.clear();
+            }
             if let Some(mark) = phonemize::punctuation(ch) {
                 units.push(mark.to_string());
+            }
+        }
+        if !ascii_run.is_empty() {
+            let (ipa, _) = english::phonemize_english(&ascii_run);
+            if !ipa.is_empty() {
+                units.push(ipa);
             }
         }
     }
 
     if units.is_empty() {
-        return Err("没有可朗读的中文".to_string());
+        return Err("没有可朗读的内容（中文需要词库拼音，英文需要 cmudict.dict）".to_string());
     }
 
     let joined = units.join(" ");
