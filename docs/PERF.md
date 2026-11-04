@@ -73,6 +73,22 @@ pwsh -File scripts/perf-baseline.ps1
 改法：`tauri.conf.json` 里 settings / ocr-region 声明保留（路由与透明配置依赖声明），
 但加 `"create": false`，由 `core::shell::ensure_window()` 在用的时候按配置构建。
 
+## 3.4 M3 之后的内存变化（2026-11-04）
+
+功能增加带来了两处常驻内存变化，**不是退化，是新增能力的成本**，必须分开记：
+
+| 来源 | 增量 | 何时付出 | 口径 |
+| --- | --- | --- | --- |
+| 翻译层（reqwest + rustls） | 主进程 RSS **28.4 → 35.8 MB**（+7.4 MB） | 启动后预热连接即常驻 | 含 TLS 会话、连接池、证书链 |
+| 中文分词器 | 峰值工作集 **7.4 → 35.7 MB**（+28 MB） | **懒加载**：第一次遇到中文取词时 | CLI 峰值；含 redb 中文表页缓存 |
+
+分词器的 28 MB 里，词表结构（12.1 万词，排序 `Vec<String>` + 二分）只占约 4–5 MB，
+**大头是遍历 redb 中文表时被 mmap 带进工作集的页**。
+
+两项优化的方向（记在 `docs/TODO.md`）：
+- 导入时另存一份 `zh-words.txt`（每行一词），加载时顺序读 1.5 MB，不碰 redb 表 → 预计降到 +6 MB；
+- 翻译层若长期不用可考虑空闲后 drop 连接池（收益待测）。
+
 ## 4. 测量时的坑
 
 - **裸 `cargo build --release` 得到的不是生产形态**：`tauri-build` 仍会置 `cfg(dev)`，

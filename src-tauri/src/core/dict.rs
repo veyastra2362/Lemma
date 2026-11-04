@@ -35,6 +35,8 @@ pub struct Entry {
 }
 
 const TERMS: TableDefinition<&str, &[u8]> = TableDefinition::new("terms");
+/// 中文词条（CC-CEDICT 导入）：键是简体词，值是同样的 Entry 结构。
+const ZH_TERMS: TableDefinition<&str, &[u8]> = TableDefinition::new("zhTerms");
 const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
 
 /// 归一化：小写 + NFKC（全角转半角等）+ 去首尾空白。
@@ -187,6 +189,102 @@ impl DictStore {
         Ok(None)
     }
 
+    /// 中文词条查询。
+    pub fn get_zh(&self, word: &str) -> Result<Option<Entry>, String> {
+        let key = word.trim();
+        if key.is_empty() {
+            return Ok(None);
+        }
+        let txn = self.db.begin_read().map_err(|e| e.to_string())?;
+        let Ok(table) = txn.open_table(ZH_TERMS) else {
+            return Ok(None);
+        };
+        read_entry(&table, key)
+    }
+
+    /// 中文词表规模（0 表示还没导入 CC-CEDICT）。
+    pub fn zh_len(&self) -> u64 {
+        let Ok(txn) = self.db.begin_read() else {
+            return 0;
+        };
+        let Ok(table) = txn.open_table(META) else {
+            return 0;
+        };
+        table
+            .get("zhCount")
+            .ok()
+            .flatten()
+            .and_then(|value| value.value().parse().ok())
+            .unwrap_or(0)
+    }
+
+    /// 把中文词表读出来，用于构建分词器。只在启动时调一次。
+    pub fn zh_words(&self) -> Result<Vec<String>, String> {
+        let txn = self.db.begin_read().map_err(|e| e.to_string())?;
+        let Ok(table) = txn.open_table(ZH_TERMS) else {
+            return Ok(Vec::new());
+        };
+        let mut words = Vec::new();
+        for item in table.iter().map_err(|e| e.to_string())? {
+            let (key, _) = item.map_err(|e| e.to_string())?;
+            words.push(key.value().to_string());
+        }
+        Ok(words)
+    }
+
+    /// 批量写入中文词条。
+    pub fn insert_zh_batch(
+        &self,
+        entries: impl Iterator<Item = (String, Entry)>,
+        chunk: usize,
+    ) -> Result<u64, String> {
+        let mut written = 0u64;
+        let mut buffer: Vec<(String, Entry)> = Vec::with_capacity(chunk);
+
+        for (key, entry) in entries {
+            buffer.push((key, entry));
+            if buffer.len() >= chunk {
+                written += self.flush_zh(&buffer)?;
+                buffer.clear();
+            }
+        }
+        if !buffer.is_empty() {
+            written += self.flush_zh(&buffer)?;
+        }
+
+        let txn = self.db.begin_write().map_err(|e| e.to_string())?;
+        {
+            let mut meta = txn.open_table(META).map_err(|e| e.to_string())?;
+            meta.insert("zhCount", written.to_string().as_str())
+                .map_err(|e| e.to_string())?;
+        }
+        txn.commit().map_err(|e| e.to_string())?;
+        Ok(written)
+    }
+
+    fn flush_zh(&self, buffer: &[(String, Entry)]) -> Result<u64, String> {
+        let txn = self.db.begin_write().map_err(|e| e.to_string())?;
+        {
+            let mut table = txn.open_table(ZH_TERMS).map_err(|e| e.to_string())?;
+            for (key, entry) in buffer {
+                // 同一个词可能有多条词条（CC-CEDICT 里多音字），保留第一条即可。
+                if table
+                    .get(key.as_str())
+                    .map_err(|e| e.to_string())?
+                    .is_some()
+                {
+                    continue;
+                }
+                let bytes = postcard::to_allocvec(entry).map_err(|e| e.to_string())?;
+                table
+                    .insert(key.as_str(), bytes.as_slice())
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        txn.commit().map_err(|e| e.to_string())?;
+        Ok(buffer.len() as u64)
+    }
+
     /// 前缀查询，用于候选提示。最多返回 `limit` 条。
     pub fn prefix(&self, prefix: &str, limit: usize) -> Result<Vec<String>, String> {
         let key = normalize(prefix);
@@ -239,6 +337,23 @@ pub fn install(store: std::sync::Arc<DictStore>) {
 
 pub fn global() -> Option<&'static std::sync::Arc<DictStore>> {
     GLOBAL.get()
+}
+
+/// 打开默认路径的词库并安装为全局实例（CLI 与 GUI 共用）。
+///
+/// 分词器要从词库读中文词表，所以 CLI 也必须先走这一步，
+/// 否则 `--segment` 会报"中文词表未导入"。
+pub fn open_default() -> Result<std::sync::Arc<DictStore>, String> {
+    if let Some(store) = global() {
+        return Ok(store.clone());
+    }
+    let path = crate::core::paths::dict_path().ok_or("拿不到应用数据目录")?;
+    if !path.exists() {
+        return Err(format!("词库不存在：{}", path.display()));
+    }
+    let store = std::sync::Arc::new(DictStore::open(&path)?);
+    install(store.clone());
+    Ok(store)
 }
 
 /// 用全局词库查词；词库没装就返回 None。

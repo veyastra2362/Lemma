@@ -11,6 +11,7 @@ function capture(overrides: Partial<Capture> = {}): Capture {
     tier: "clipboard",
     entry: null,
     needsTranslation: true,
+    candidates: [],
     app: "chrome.exe",
     elapsedMs: 19,
     error: null,

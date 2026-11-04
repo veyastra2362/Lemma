@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use crate::core::dict::{self, Entry};
+use crate::core::segment::{self, contains_cjk};
 use crate::core::settings::CaptureMode;
 use crate::core::text::{sentence_containing, trim_word};
 use crate::core::translate::is_single_word;
@@ -55,6 +56,8 @@ pub struct Capture {
     pub entry: Option<Entry>,
     /// 这段文本是不是「该走翻译」而不是查词。判定规则在 `translate::is_single_word`。
     pub needs_translation: bool,
+    /// 中文多词时的候选词（点一个就下探）。空表示没有候选。
+    pub candidates: Vec<String>,
     /// 来源进程名，纯诊断用。
     pub app: String,
     pub elapsed_ms: f64,
@@ -90,6 +93,44 @@ pub fn pick_uia(outcome: &UiaOutcome, mode: CaptureMode) -> Option<(Tier, String
         // 只认光标词：原生应用里"悬停即查"。
         CaptureMode::HoverOnly => word,
         CaptureMode::Auto => selection.or(word),
+    }
+}
+
+/// 中文取词：分词出候选。
+///
+/// 返回 `(用于查词的文本, 候选列表)`：
+/// - 词表里只切出一个词 → 直接查那个词；
+/// - 切出多个 → 返回候选，让用户点（不猜他想查哪个）；
+/// - 没切出（或本来就是句子）→ 原样返回文本。
+fn cjk_candidates(text: &str, needs_translation: bool) -> (String, Vec<String>) {
+    if needs_translation || !contains_cjk(text) {
+        return (text.to_string(), Vec::new());
+    }
+    let Some(segmenter) = segment::global() else {
+        return (text.to_string(), Vec::new());
+    };
+
+    let words: Vec<String> = segmenter
+        .segment(text)
+        .into_iter()
+        .filter(|token| token.known)
+        .map(|token| token.text)
+        .collect();
+
+    match words.len() {
+        0 => (text.to_string(), Vec::new()),
+        1 => (words[0].clone(), Vec::new()),
+        _ => (text.to_string(), words),
+    }
+}
+
+/// 查词：含汉字走中文词表，否则走英文词库。
+fn lookup_entry(text: &str) -> Option<Entry> {
+    let store = dict::global()?;
+    if contains_cjk(text) {
+        store.get_zh(text).ok().flatten()
+    } else {
+        store.get(text).ok().flatten()
     }
 }
 
@@ -130,13 +171,15 @@ pub fn capture(mode: CaptureMode) -> Capture {
     let uia = platform::uia_capture();
 
     if let Some((tier, text)) = pick_uia(&uia, mode) {
-        let entry = dict::lookup_global(&text);
         let needs_translation = !is_single_word(&text);
+        let (lookup_text, candidates) = cjk_candidates(&text, needs_translation);
+        let entry = lookup_entry(&lookup_text);
         let result = Capture {
             sentence: sentence_containing(&uia.paragraph, &text),
             paragraph: uia.paragraph,
             entry,
             needs_translation,
+            candidates,
             text,
             tier: Some(tier),
             app: uia.app,
@@ -166,8 +209,9 @@ pub fn capture(mode: CaptureMode) -> Capture {
                     // 剪贴板里只有选区文本，没有段落，句子就取它自己。
                     sentence: text.clone(),
                     paragraph: text.clone(),
-                    entry: dict::lookup_global(&text),
+                    entry: lookup_entry(&text),
                     needs_translation: !is_single_word(&text),
+                    candidates: cjk_candidates(&text, !is_single_word(&text)).1,
                     text,
                     tier: Some(Tier::Clipboard),
                     app: uia.app,
@@ -269,6 +313,29 @@ mod tests {
             CaptureMode::Auto,
         );
         assert_eq!(picked.unwrap().0, Tier::Selection);
+    }
+
+    #[test]
+    fn cjk_segmentation_produces_candidates() {
+        // 词表没导入时不应崩，只是没有候选
+        let (lookup, candidates) = super::cjk_candidates("多服务商", false);
+        assert_eq!(lookup, "多服务商");
+        let _ = candidates;
+    }
+
+    #[test]
+    fn sentences_never_become_candidates() {
+        // 需要翻译的长句不参与分词
+        let (lookup, candidates) = super::cjk_candidates("这是一句需要翻译的话。", true);
+        assert_eq!(lookup, "这是一句需要翻译的话。");
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn english_text_is_not_segmented() {
+        let (lookup, candidates) = super::cjk_candidates("threshold", false);
+        assert_eq!(lookup, "threshold");
+        assert!(candidates.is_empty());
     }
 
     #[test]

@@ -85,6 +85,8 @@ export interface Capture {
   entry: Entry | null;
   /** 这段文本该走翻译而不是查词（规则在 Rust 侧 `translate::is_single_word`）。 */
   needsTranslation: boolean;
+  /** 中文多词切分出的候选词；点一个就下探。 */
+  candidates: string[];
   /** 来源进程名，诊断用。 */
   app: string;
   elapsedMs: number;

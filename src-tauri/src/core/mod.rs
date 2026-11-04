@@ -5,6 +5,7 @@ pub mod double_tap;
 pub mod logs;
 pub mod paths;
 pub mod perf;
+pub mod segment;
 pub mod selection;
 pub mod settings;
 pub mod shell;

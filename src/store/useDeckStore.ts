@@ -26,6 +26,8 @@ export interface Card {
   entry: Entry | null;
   /** 句卡片的译文状态；词卡片恒为 idle。 */
   translation: TranslationState;
+  /** 中文多词时的候选词（点一个下探）；空表示没有候选。 */
+  candidates: string[];
   /** 产生这张卡片的来源文案（`chrome.exe · 选区`），根卡片才显示。 */
   source: string | null;
   /** 取词耗时，仅根卡片显示。 */
@@ -78,6 +80,7 @@ export const useDeckStore = create<DeckState>((set, get) => ({
       original: isWordCard ? null : raw,
       entry: capture.entry ?? null,
       translation: { status: "idle" },
+      candidates: capture.candidates ?? [],
       source: `${capture.app || "?"} · ${capture.tier ?? "-"}`,
       elapsedMs: capture.elapsedMs,
     };
@@ -106,6 +109,7 @@ export const useDeckStore = create<DeckState>((set, get) => ({
           original: null,
           entry,
           translation: { status: "idle" },
+          candidates: [],
           source: null,
           elapsedMs: null,
         },

@@ -57,6 +57,16 @@ pub fn try_run() -> bool {
             lookup(&args);
             true
         }
+        "--import-cedict" => {
+            crate::platform::console::attach_parent();
+            import_cedict(&args);
+            true
+        }
+        "--segment" => {
+            crate::platform::console::attach_parent();
+            segment(&args);
+            true
+        }
         "--translate" => {
             crate::platform::console::attach_parent();
             translate(&args);
@@ -185,6 +195,44 @@ fn import_dict(args: &[String]) {
 }
 
 /// 翻译一段文本。不启动 GUI，用于验证翻译链路与测时。
+/// 无头验证分词：`lemma.exe --segment "当前进度：多服务商"`
+fn segment(args: &[String]) {
+    let text = args[1..].join(" ");
+    if text.trim().is_empty() {
+        eprintln!("用法：lemma.exe --segment <text>");
+        return;
+    }
+    if let Err(error) = crate::core::dict::open_default() {
+        eprintln!("打开词库失败：{error}");
+        return;
+    }
+
+    let started = Instant::now();
+    let Some(segmenter) = crate::core::segment::global() else {
+        eprintln!("中文词表未导入（先跑 --import-cedict）");
+        return;
+    };
+    let tokens = segmenter.segment(&text);
+    println!(
+        "词表规模：{}（最长词 {} 字）",
+        segmenter.len(),
+        segmenter.max_len()
+    );
+    println!(
+        "分词结果：{}",
+        tokens
+            .iter()
+            .map(|token| if token.known {
+                format!("[{}]", token.text)
+            } else {
+                token.text.clone()
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    println!("用时：{:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
+}
+
 fn translate(args: &[String]) {
     let text = args[1..]
         .iter()
@@ -233,6 +281,118 @@ fn translate(args: &[String]) {
         }
         Err(error) => eprintln!("翻译失败：{error}"),
     }
+}
+
+/// 导入 CC-CEDICT。
+///
+/// 行格式：`繁体 简体 [pin1 yin1] /gloss1/gloss2/`
+/// 只取简体做键（阅读里几乎只会遇到简体），拼音与英文释义落进 `Entry`。
+fn import_cedict(args: &[String]) {
+    let path = args
+        .get(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("data/cedict.txt"));
+    let Some(out) = paths::dict_path() else {
+        eprintln!("拿不到 %APPDATA%，无法确定词库位置");
+        return;
+    };
+    if !path.exists() {
+        eprintln!("找不到 CC-CEDICT 文件：{}", path.display());
+        return;
+    }
+
+    // 注意：这里**不删除**已有词库——英文词库要保留，中文是追加一张表。
+    let store = match DictStore::open(&out) {
+        Ok(store) => store,
+        Err(error) => {
+            eprintln!("打开词库失败：{error}（应用正在运行时词库被独占，请先退出托盘里的 Lemma）");
+            return;
+        }
+    };
+
+    println!("源文件 : {}", path.display());
+    println!("目标   : {}", out.display());
+
+    let started = Instant::now();
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(error) => {
+            eprintln!("读取失败：{error}");
+            return;
+        }
+    };
+
+    let mut skipped = 0u64;
+    let mut total = 0u64;
+    let entries = content.lines().filter_map(|line| {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return None;
+        }
+        match parse_cedict_line(line) {
+            Some((word, entry)) => {
+                total += 1;
+                if total.is_multiple_of(50_000) {
+                    eprintln!("  已解析 {total} 条");
+                }
+                Some((word, entry))
+            }
+            None => {
+                skipped += 1;
+                None
+            }
+        }
+    });
+
+    match store.insert_zh_batch(entries, 20_000) {
+        Ok(written) => {
+            println!(
+                "导入完成：{written} 条中文词条，跳过 {skipped} 条，用时 {:.1}s",
+                started.elapsed().as_secs_f64()
+            );
+            if let Ok(meta) = std::fs::metadata(&out) {
+                println!("词库大小：{:.1} MB", meta.len() as f64 / (1024.0 * 1024.0));
+            }
+        }
+        Err(error) => eprintln!("导入失败：{error}"),
+    }
+}
+
+/// 解析一行 CC-CEDICT。返回 `(简体词, 词条)`。
+fn parse_cedict_line(line: &str) -> Option<(String, Entry)> {
+    // 繁体 简体 [拼音] /释义1/释义2/
+    let mut parts = line.splitn(2, '[');
+    let head = parts.next()?.trim();
+    let rest = parts.next()?;
+
+    let mut head_parts = head.split_whitespace();
+    let _traditional = head_parts.next()?;
+    let simplified = head_parts.next()?.trim();
+    if simplified.is_empty() {
+        return None;
+    }
+
+    let (pinyin, glosses_raw) = rest.split_once(']')?;
+    let glosses: Vec<&str> = glosses_raw
+        .trim()
+        .trim_matches('/')
+        .split('/')
+        .map(str::trim)
+        .filter(|gloss| !gloss.is_empty())
+        .collect();
+    if glosses.is_empty() {
+        return None;
+    }
+
+    let entry = Entry {
+        word: simplified.to_string(),
+        // CC-CEDICT 的拼音是 `ni3 hao3` 这种带声调数字的写法，原样保留
+        // （转成 ā á ǎ à 需要查表，收益不大，先保留可读音形）。
+        phonetic: pinyin.trim().to_string(),
+        translation: glosses.join("\n"),
+        ..Default::default()
+    };
+    Some((simplified.to_string(), entry))
 }
 
 fn lookup(args: &[String]) {

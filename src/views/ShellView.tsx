@@ -196,7 +196,26 @@ function CardView({
         </div>
       )}
 
-      {!entry && (
+      {/* 中文切出多个词时不猜用户想查哪个，列成候选让他点 */}
+      {card.candidates.length > 0 && (
+        <div className="mt-1">
+          <p className="mb-1 text-[11px] text-[var(--hud-muted)]">{t("cjkCandidates")}</p>
+          <div className="flex flex-wrap gap-1">
+            {card.candidates.map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                onClick={() => onWord(candidate)}
+                className="rounded border border-white/12 px-1.5 py-0.5 text-[12px] text-[var(--hud-text)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+              >
+                {candidate}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!entry && card.candidates.length === 0 && (
         <p className="text-[12px] text-[var(--hud-muted)]">{t("cardNotInDict")}</p>
       )}
 

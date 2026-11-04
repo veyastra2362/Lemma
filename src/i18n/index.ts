@@ -28,6 +28,7 @@ const zhCN = {
   settingsHotkeyRule: "至少包含 Ctrl / Alt 之一",
   settingsHotkeySaveFailed: "保存失败",
   cardNotInDict: "词库未收录",
+  cjkCandidates: "切出多个词，点一个继续查",
   translateLoading: "翻译中…",
   translateFailed: "翻译失败",
   translateCached: "缓存",
