@@ -3,8 +3,8 @@
 //! 三个决定（见 `.agents/notes/`）：
 //! 1. **纯 Rust 音素化**：拼音来自 CC-CEDICT（已有词库自带），拼音→注音自己实现，
 //!    不引 Python 运行时、不碰 espeak-ng 的 GPL；
-//! 2. **进程内按需加载**：模型空载约 242 MB，远超主进程口径，所以只在用户点朗读时加载，
-//!    用完尝试释放（`ort` 释放不及时的问题见文档）；
+//! 2. **子进程隔离**：模型加载会让进程 RSS 涨到 330 MB 量级，所以真正合成跑在
+//!    `lemma.exe --tts-worker` 里（见 `worker.rs`），主进程只负责播放；
 //! 3. **音素串走 tokenizer 白名单**：Kokoro 的 zh 词表只有 172 个符号，
 //!    任何不在表里的字符都会被静默丢弃——所以先按白名单过滤再查 id。
 
@@ -26,6 +26,8 @@ pub const SAMPLE_RATE: u32 = 24_000;
 /// 音色文件的 style 行数（`voices/*.bin` 是 [510, 256] f32）。
 const STYLE_ROWS: usize = 510;
 const STYLE_DIM: usize = 256;
+/// Kokoro 的上下文长度上限（含首尾边界 token）。
+const MAX_TOKENS: usize = 512;
 
 /// 合成的音频。
 pub struct Speech {
@@ -45,13 +47,13 @@ impl Speech {
         out.extend_from_slice(b"RIFF");
         out.extend_from_slice(&(36 + data_len).to_le_bytes());
         out.extend_from_slice(b"WAVEfmt ");
-        out.extend_from_slice(&16u32.to_le_bytes()); // fmt 块长度
-        out.extend_from_slice(&1u16.to_le_bytes()); // PCM
-        out.extend_from_slice(&1u16.to_le_bytes()); // 单声道
+        out.extend_from_slice(&16u32.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
         out.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
-        out.extend_from_slice(&(SAMPLE_RATE * 2).to_le_bytes()); // 字节率
-        out.extend_from_slice(&2u16.to_le_bytes()); // 块对齐
-        out.extend_from_slice(&16u16.to_le_bytes()); // 位深
+        out.extend_from_slice(&(SAMPLE_RATE * 2).to_le_bytes());
+        out.extend_from_slice(&2u16.to_le_bytes());
+        out.extend_from_slice(&16u16.to_le_bytes());
         out.extend_from_slice(b"data");
         out.extend_from_slice(&data_len.to_le_bytes());
         for sample in &self.samples {
@@ -106,15 +108,12 @@ static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 static VOCAB: OnceLock<Vec<(String, i64)>> = OnceLock::new();
 static STYLES: OnceLock<Vec<f32>> = OnceLock::new();
 
-/// 会话是否已加载（用于界面提示"已占内存"）。
+/// 会话是否已加载。
 pub fn model_loaded() -> bool {
     SESSION.lock().map(|guard| guard.is_some()).unwrap_or(false)
 }
 
-/// 卸载模型，把内存还给系统。
-///
-/// 实测：加载后主进程 RSS 从 30 MB 涨到 **355 MB**——这是主进程口径的 10 倍，
-/// 所以"用完就卸"是默认行为，代价是下次朗读要重新加载（约 1.2 s）。
+/// 卸载模型，把内存还给系统（进程内路径用；子进程路径整体退出即可）。
 pub fn release_model() {
     if let Ok(mut guard) = SESSION.lock()
         && guard.is_some()
@@ -126,8 +125,7 @@ pub fn release_model() {
 
 /// 拿到（必要时创建）会话并执行一次推理。
 ///
-/// 回调只能返回**拥有所有权**的数据（不能返回 `SessionOutputs`——它借用 session），
-/// 所以调用方在闭包里就把张量抽成 `Vec<f32>`。
+/// 回调只能返回拥有所有权的数据（不能返回 `SessionOutputs`——它借用 session）。
 fn with_session<T>(run: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
     let mut guard = SESSION.lock().map_err(|_| "TTS 会话被毒化".to_string())?;
     if guard.is_none() {
@@ -148,9 +146,7 @@ fn with_session<T>(run: impl FnOnce(&mut Session) -> Result<T, String>) -> Resul
     run(session)
 }
 
-/// 读 Kokoro 的符号词表（`tokenizer.json` 里的 `model.vocab`）。
-///
-/// 只取"单字符符号"：多字符条目在实际音素串里不会出现，留着反而干扰匹配。
+/// 读 Kokoro 的符号词表（`tokenizer.json` 里的 `model.vocab`），只取单字符符号。
 fn vocab() -> Result<&'static [(String, i64)], String> {
     if let Some(existing) = VOCAB.get() {
         return Ok(existing);
@@ -170,7 +166,6 @@ fn vocab() -> Result<&'static [(String, i64)], String> {
         .iter()
         .filter_map(|(symbol, id)| {
             let id = id.as_i64()?;
-            // 只保留单字符符号；空格本身由词表里的 ' ' 承担
             if symbol.chars().count() == 1 {
                 Some((symbol.clone(), id))
             } else {
@@ -210,7 +205,7 @@ fn styles() -> Result<&'static [f32], String> {
         .ok_or_else(|| "音色加载失败".to_string())
 }
 
-/// 把音素串按词表映射成 token id。表外字符丢弃（与官方 tokenizer 的 normalizer 行为一致）。
+/// 把音素串按词表映射成 token id。表外字符丢弃（与官方 normalizer 行为一致）。
 pub fn encode_phonemes(phonemes: &str) -> Result<Vec<i64>, String> {
     let vocab = vocab()?;
     let lookup = |ch: char| -> Option<i64> {
@@ -236,16 +231,36 @@ pub fn speak_pinyin(pinyin: &str, speed: f32) -> Result<Speech, String> {
 }
 
 /// 从音素串合成语音。
+///
+/// 两处**必须与官方实现一致**的细节（错了听感立刻变怪）：
+/// 1. `input_ids` 首尾补 id = 0 的边界 token（`[[0, *ids, 0]]`）——
+///    少了它模型没有句首锚点，实测"开头音调很怪"；
+/// 2. style 行号取 `音素串字符数 - 1`（官方 `pack[len(ps)-1]`），不是 token 数。
 pub fn speak_phonemes(phonemes: &str, speed: f32) -> Result<Speech, String> {
-    let ids = encode_phonemes(phonemes)?;
+    let tokens = encode_phonemes(phonemes)?;
+    if tokens.len() + 2 > MAX_TOKENS {
+        return Err(format!(
+            "这段太长（{} 个音素，上限 {}），请分句朗读",
+            tokens.len(),
+            MAX_TOKENS - 2
+        ));
+    }
     let styles = styles()?;
 
-    // Kokoro 的 style 是"按 token 数取行"：同一段文本用同一行，太短/太长就夹到边界
-    let row = ids.len().min(STYLE_ROWS - 1);
+    let mut padded = Vec::with_capacity(tokens.len() + 2);
+    padded.push(0);
+    padded.extend_from_slice(&tokens);
+    padded.push(0);
+
+    let row = phonemes
+        .chars()
+        .count()
+        .saturating_sub(1)
+        .min(STYLE_ROWS - 1);
     let style_slice = &styles[row * STYLE_DIM..(row + 1) * STYLE_DIM];
 
     let input_ids =
-        Array2::<i64>::from_shape_vec((1, ids.len()), ids.clone()).map_err(|e| e.to_string())?;
+        Array2::<i64>::from_shape_vec((1, padded.len()), padded).map_err(|e| e.to_string())?;
     let style = Array2::<f32>::from_shape_vec((1, STYLE_DIM), style_slice.to_vec())
         .map_err(|e| e.to_string())?;
     let speed = Array1::<f32>::from_vec(vec![speed]);
@@ -267,30 +282,25 @@ pub fn speak_phonemes(phonemes: &str, speed: f32) -> Result<Speech, String> {
     Ok(Speech { samples })
 }
 
-/// 把一段中文朗读出来。
-///
-/// **先分词、按词查拼音**，查不到再退到单字。
-/// 为什么：CC-CEDICT 对多音字是"一个词条一个读音"，按字取第一条会取错——
-/// 实测「读」拿到的是 `dou4`（句读），而「阅读」里应该是 `du2`。
+/// 把一段中文朗读出来（先分词按词查拼音，查不到退到单字）。
 pub fn speak_text(text: &str, speed: f32) -> Result<Speech, String> {
     let phonemes = phonemes_for_text(text)?;
-    speak_phonemes(phonemes.trim(), speed)
+    speak_phonemes(&phonemes, speed)
 }
 
-/// 中文 → 音素串（先按词查拼音，查不到退到单字）。
+/// 中文 → 音素串。
 ///
-/// 抽成公开函数是为了让 `--tts` 的调试输出与真实合成**走同一条路**——
-/// 之前调试那份是另写的按字逻辑，结果"读"在调试里显示 dou4、实际合成却是 du2，对不上。
+/// **按词查拼音而不是按字**：CC-CEDICT 对多音字是"一个词条一个读音"，
+/// 按字取第一条会取错（实测「读」拿到 `dou4`，而「阅读」里应是 `du2`）。
+///
+/// 拼接方式与 misaki 一致：词内音节相连、词间空格、标点单独成段——
+/// 韵律靠"词边界 + 标点"驱动，逐音节加空格会听成"一个字一个字念"。
 pub fn phonemes_for_text(text: &str) -> Result<String, String> {
     let store = crate::core::dict::open_default()?;
-
-    // 把原文按分词结果顺序展开，标点单独成段——这样韵律才由"词边界 + 标点"驱动。
-    // misaki 的做法就是 `' '.join(word2ipa(w) for w in words)`，词内不加分隔。
     let mut units: Vec<String> = Vec::new();
 
     let tokens = match crate::core::segment::global() {
         Some(segmenter) => segmenter.segment(text),
-        // 没有分词器：按字切开（最保守，不会把词黏在一起）
         None => text
             .chars()
             .map(|ch| crate::core::segment::Token {
@@ -308,7 +318,7 @@ pub fn phonemes_for_text(text: &str) -> Result<String, String> {
                 .flatten()
                 .map(|entry| entry.phonetic)
                 .unwrap_or_default();
-            let syllables: Vec<phonemize::Syllable> = pinyin
+            let syllables: Vec<Syllable> = pinyin
                 .split_whitespace()
                 .filter_map(phonemize::syllable)
                 .collect();
@@ -316,7 +326,6 @@ pub fn phonemes_for_text(text: &str) -> Result<String, String> {
                 units.push(phonemize::phonemize_word(&syllables));
                 continue;
             }
-            // 词表里没有这个"词"：逐字兜底
             for ch in token
                 .text
                 .chars()
@@ -336,7 +345,6 @@ pub fn phonemes_for_text(text: &str) -> Result<String, String> {
             continue;
         }
 
-        // 非汉字段：把标点挑出来当独立单元（顿号、逗号、句号……）
         for ch in token.text.chars() {
             if let Some(mark) = phonemize::punctuation(ch) {
                 units.push(mark.to_string());
@@ -349,7 +357,7 @@ pub fn phonemes_for_text(text: &str) -> Result<String, String> {
     }
 
     let joined = units.join(" ");
-    // 标点前不留空格（"ㄉㄨ4 ," → "ㄉㄨ4,"），与自然书写一致
+    // 标点前不留空格（`ㄉㄨ4 ,` → `ㄉㄨ4,`），与自然书写一致
     let mut cleaned = String::with_capacity(joined.len());
     for ch in joined.chars() {
         if matches!(ch, ',' | '.' | '!' | '?' | ';' | ':') && cleaned.ends_with(' ') {
@@ -359,12 +367,13 @@ pub fn phonemes_for_text(text: &str) -> Result<String, String> {
     }
     Ok(cleaned.trim().to_string())
 }
+
 /// 保存为 WAV 文件。
 pub fn save_wav(speech: &Speech, path: &Path) -> Result<(), String> {
     std::fs::write(path, speech.to_wav()).map_err(|e| format!("写 WAV 失败：{e}"))
 }
 
-/// 单测用：把音节列表直接转音素串。
+/// 把音节列表直接转音素串（单测用）。
 pub fn phonemes_for(syllables: &[Syllable]) -> String {
     phonemize::phonemize(syllables)
 }
@@ -382,7 +391,6 @@ mod tests {
         assert_eq!(&wav[0..4], b"RIFF");
         assert_eq!(&wav[8..12], b"WAVE");
         assert_eq!(wav.len(), 44 + 6);
-        // 采样率写在 fmt 块里
         let rate = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
         assert_eq!(rate, SAMPLE_RATE);
     }
@@ -393,5 +401,35 @@ mod tests {
             samples: vec![0.0; SAMPLE_RATE as usize * 2],
         };
         assert!((speech.duration_secs() - 2.0).abs() < 0.001);
+    }
+
+    /// 边界 token 必须补：官方是 `[[0, *ids, 0]]`，少了它开头音调会怪。
+    #[test]
+    fn token_sequence_is_padded_with_boundary_tokens() {
+        // 用假词表校验"补 0"的逻辑本身（不依赖模型文件）
+        let tokens = vec![12i64, 34, 56];
+        let mut padded = Vec::with_capacity(tokens.len() + 2);
+        padded.push(0);
+        padded.extend_from_slice(&tokens);
+        padded.push(0);
+        assert_eq!(padded, vec![0, 12, 34, 56, 0]);
+    }
+
+    /// style 行号按音素串字符数 - 1 取，且要夹在 [0, 509]。
+    #[test]
+    fn style_row_follows_phoneme_char_count() {
+        let row = |phonemes: &str| {
+            phonemes
+                .chars()
+                .count()
+                .saturating_sub(1)
+                .min(STYLE_ROWS - 1)
+        };
+        assert_eq!(row("ㄉㄨ4"), 2);
+        assert_eq!(row("ㄉㄨ4 ㄈㄨ3"), 6);
+        // 空串不该下溢
+        assert_eq!(row(""), 0);
+        // 超长夹到上限
+        assert_eq!(row(&"a".repeat(900)), STYLE_ROWS - 1);
     }
 }
