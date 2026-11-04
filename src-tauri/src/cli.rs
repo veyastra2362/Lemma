@@ -62,6 +62,11 @@ pub fn try_run() -> bool {
             import_cedict(&args);
             true
         }
+        "--ocr" => {
+            crate::platform::console::attach_parent();
+            ocr(&args);
+            true
+        }
         "--segment" => {
             crate::platform::console::attach_parent();
             segment(&args);
@@ -196,6 +201,72 @@ fn import_dict(args: &[String]) {
 
 /// 翻译一段文本。不启动 GUI，用于验证翻译链路与测时。
 /// 无头验证分词：`lemma.exe --segment "当前进度：多服务商"`
+/// 对一张图片跑端侧 OCR。不启动 GUI，用于验证 OCR 链路与测时。
+fn ocr(args: &[String]) {
+    let Some(path) = args.get(1) else {
+        eprintln!("用法：lemma.exe --ocr <image>");
+        return;
+    };
+    let Some(dir) = crate::core::ocr::model_dir() else {
+        eprintln!("拿不到应用数据目录");
+        return;
+    };
+    println!("模型目录：{}", dir.display());
+    if !crate::core::ocr::models_ready() {
+        eprintln!("模型不齐：需要 det.onnx / rec.onnx / ppocr_keys_v1.txt");
+        return;
+    }
+
+    let image = match image::open(path) {
+        Ok(image) => image.to_rgb8(),
+        Err(error) => {
+            eprintln!("读取图片失败：{error}");
+            return;
+        }
+    };
+    let (width, height) = (image.width(), image.height());
+    println!("图片：{}×{}", width, height);
+
+    // 热态复测：LEMMA_OCR_REPEAT=3 时连跑多次，第一次含会话创建
+    let repeat: usize = std::env::var("LEMMA_OCR_REPEAT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1);
+
+    let started = Instant::now();
+    let mut last_blocks = Vec::new();
+    for round in 0..repeat {
+        let round_started = Instant::now();
+        match crate::core::ocr::recognize(image.as_raw(), width, height) {
+            Ok(blocks) => {
+                println!(
+                    "第 {} 次：{:.0} ms",
+                    round + 1,
+                    round_started.elapsed().as_secs_f64() * 1000.0
+                );
+                last_blocks = blocks;
+            }
+            Err(error) => {
+                eprintln!("OCR 失败：{error}");
+                return;
+            }
+        }
+    }
+    let blocks = last_blocks;
+    println!(
+        "识别到 {} 段，总耗时 {:.0} ms",
+        blocks.len(),
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+    for block in &blocks {
+        let x0 = block.quad[0].x;
+        let y0 = block.quad[0].y;
+        println!("  ({x0:.0},{y0:.0}) w={}  {}", block.weight, block.text);
+    }
+    println!("--- 拼接文本 ---");
+    println!("{}", crate::core::ocr::blocks_to_text(&blocks));
+}
+
 fn segment(args: &[String]) {
     let text = args[1..].join(" ");
     if text.trim().is_empty() {

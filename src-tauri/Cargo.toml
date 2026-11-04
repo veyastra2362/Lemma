@@ -31,6 +31,11 @@ csv = "1"
 postcard = { version = "1", features = ["alloc"] }
 # 翻译层：只要 json + rustls，不引入 openssl
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+# 端侧 OCR（M4b）：ONNX Runtime 绑定 + 图像解码。
+# 纯 Rust 的 tract 已被实测否决（Paddle2ONNX 的符号维度名解析不了），见 docs/ONNX-PROBE.md。
+ort = "=2.0.0-rc.10"
+ndarray = "0.16"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "query"] }
 unicode-normalization = "0.1"
 thiserror = "2"

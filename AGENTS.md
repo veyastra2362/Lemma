@@ -91,6 +91,9 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
   不吞键、不改键、不阻塞、不做 I/O、不记录按键内容。
 - 不得新增其它任何钩子（`SetWindowsHookEx` 的其它 hook id 一律禁止）。
 - 不得注入 DLL、不打补丁、不 hook 窗口消息。
+  （**加载自家的原生依赖不算注入**：`ort` 静态链接的 onnxruntime 属于正常依赖，
+  与 BepInEx/CheatEngine 那类注入是两件事。但要保证它只做推理，不碰别的进程。）
+- OCR/TTS 的模型权重不进仓库（`*.onnx` 已在 `.gitignore`），放应用数据目录。
 - 模拟输入只允许出现在 M6 的「回填」兜底路径，且必须严格保存/恢复剪贴板全格式。
 - 不要提交密钥或 API key。
 - 不要为了方便而放宽 CSP。

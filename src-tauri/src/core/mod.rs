@@ -3,6 +3,7 @@
 pub mod dict;
 pub mod double_tap;
 pub mod logs;
+pub mod ocr;
 pub mod paths;
 pub mod perf;
 pub mod reader;
