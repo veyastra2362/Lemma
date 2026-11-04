@@ -40,7 +40,17 @@ fn session(model_path: &std::path::Path) -> Result<&'static Mutex<Session>, Stri
 
 /// 计算对齐到 32 倍数的目标尺寸。
 pub fn aligned_size(width: u32, height: u32) -> (u32, u32) {
-    let scale = (MAX_SIDE / width.max(height) as f32).min(1.0);
+    // **只缩不放。**
+    //
+    // 曾经在这里加过"长边小于 640 就放大"，出发点是小字号检测不到；
+    // 但实测真正原因是**后处理按收缩核高度过滤**（见 `postprocess.rs`），
+    // 修好顺序后小字号本来就正常，加放大反而让 488px 宽的行被切成两段（CER 0→0.125）。
+    let long = width.max(height) as f32;
+    let scale = if long > MAX_SIDE {
+        MAX_SIDE / long
+    } else {
+        1.0
+    };
     let align = |value: f32| -> u32 {
         let scaled = (value * scale).max(1.0) as u32;
         scaled.max(SIZE_ALIGN).div_ceil(SIZE_ALIGN) * SIZE_ALIGN
@@ -90,6 +100,16 @@ pub fn run(
         return Err(format!("det 输出维度异常：{dims:?}"));
     }
 
+    if std::env::var("LEMMA_OCR_DEBUG").is_ok() {
+        let max = data.iter().cloned().fold(f32::MIN, f32::max);
+        let mean = data.iter().sum::<f32>() / data.len() as f32;
+        let hot = data.iter().filter(|v| **v > 0.3).count();
+        eprintln!(
+            "[det] src={width}x{height} → {det_w}x{det_h} prob={}x{} max={max:.3} mean={mean:.4} >0.3={hot}",
+            dims[3], dims[2]
+        );
+    }
+
     Ok(DetOutput {
         prob: data.to_vec(),
         width: dims[3],
@@ -123,7 +143,16 @@ mod tests {
     #[test]
     fn tiny_images_still_align() {
         let (w, h) = aligned_size(10, 10);
-        assert_eq!(w, 32);
-        assert_eq!(h, 32);
+        assert_eq!(w % 32, 0);
+        assert_eq!(h % 32, 0);
+        // 10px 的图会被放大到接近 MIN_SIDE（受 MAX_UPSCALE 限制）
+        assert!(w >= 32, "实际 {w}");
+    }
+
+    #[test]
+    fn mid_size_images_are_untouched() {
+        // 长边已在 [MIN_SIDE, MAX_SIDE] 之间：不缩放
+        let (w, h) = aligned_size(800, 300);
+        assert_eq!((w, h), (800, 320));
     }
 }

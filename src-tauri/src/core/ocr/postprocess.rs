@@ -85,6 +85,9 @@ pub fn extract_boxes(params: ExtractParams<'_>) -> Vec<Candidate> {
             }
         }
 
+        if std::env::var("LEMMA_OCR_DEBUG").is_ok() {
+            eprintln!("[post] blob pixels={}", points.len());
+        }
         if points.len() < min_area {
             continue;
         }
@@ -120,16 +123,33 @@ pub fn extract_boxes(params: ExtractParams<'_>) -> Vec<Candidate> {
             };
             quad
         };
-        // 过滤过扁/过小的框（多为噪声或分隔线）
-        let width_edge = ((quad[1].x - quad[0].x).powi(2) + (quad[1].y - quad[0].y).powi(2)).sqrt();
-        let height_edge =
-            ((quad[2].x - quad[1].x).powi(2) + (quad[2].y - quad[1].y).powi(2)).sqrt();
+        // 先外扩，再按**外扩后**的尺寸过滤。
+        //
+        // 顺序很关键：DB 输出的是收缩核，小字号的核只有几像素高（实测 12px 字号 → 核高 4.4px），
+        // 按核高过滤会把整行丢掉——表现就是"框选一小块文字什么都认不出来"。
+        // 真正喂给 rec 的是外扩后的框，判断就该用它。
+        let expanded = unclip(&quad, unclip_ratio);
+        let width_edge = ((expanded[1].x - expanded[0].x).powi(2)
+            + (expanded[1].y - expanded[0].y).powi(2))
+        .sqrt();
+        let height_edge = ((expanded[2].x - expanded[1].x).powi(2)
+            + (expanded[2].y - expanded[1].y).powi(2))
+        .sqrt();
+        if std::env::var("LEMMA_OCR_DEBUG").is_ok() {
+            let kernel_w =
+                ((quad[1].x - quad[0].x).powi(2) + (quad[1].y - quad[0].y).powi(2)).sqrt();
+            let kernel_h =
+                ((quad[2].x - quad[1].x).powi(2) + (quad[2].y - quad[1].y).powi(2)).sqrt();
+            eprintln!(
+                "[post] kernel {kernel_w:.1}x{kernel_h:.1} → expanded {width_edge:.1}x{height_edge:.1}"
+            );
+        }
         if width_edge < 8.0 || height_edge < 6.0 {
             continue;
         }
 
         candidates.push(Candidate {
-            quad: unclip(&quad, unclip_ratio),
+            quad: expanded,
             area: points.len(),
         });
     }
