@@ -13,6 +13,7 @@ pub mod settings;
 pub mod shell;
 pub mod text;
 pub mod translate;
+pub mod translate_cache;
 pub mod tray;
 pub mod trigger;
 pub mod tts;

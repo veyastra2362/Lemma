@@ -627,6 +627,13 @@ fn translate(args: &[String]) {
         }
     };
 
+    // 与 GUI 共用同一份落盘缓存：CLI 也要 attach，否则 --translate 永远不写缓存
+    if let Some(dir) = paths::app_data_dir() {
+        let cache_path = dir.join("translate-cache.jsonl");
+        crate::core::translate_cache::attach(cache_path.clone());
+        crate::core::translate::restore_cache(&cache_path);
+    }
+
     println!("原文：{text}");
     println!("provider={:?} target={:?}", config.provider, config.target);
 

@@ -113,6 +113,10 @@ pub fn run() {
 
             let data_dir = handle.path().app_data_dir()?;
             app.manage(SettingsStore::load(&data_dir));
+
+            // 恢复翻译缓存：重启后重复段落不再走网络
+            crate::core::translate_cache::attach(data_dir.join("translate-cache.jsonl"));
+            crate::core::translate::restore_cache(&data_dir.join("translate-cache.jsonl"));
             if let Err(error) = trigger::install(handle) {
                 logs::line(format!("trigger failed: {error}"));
             }

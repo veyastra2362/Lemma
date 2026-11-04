@@ -161,11 +161,39 @@ fn with_cache<T>(f: impl FnOnce(&mut Cache) -> T) -> T {
 }
 
 /// 清空缓存（设置里换了 provider / 目标语言时调用，避免拿到旧结果）。
+///
+/// 同时删掉落盘文件——否则重启后旧语言的译文又会被读回来。
 pub fn clear_cache() {
     with_cache(|cache| {
         cache.map.clear();
         cache.order.clear();
     });
+    crate::core::translate_cache::clear();
+}
+
+/// 把落盘的缓存放进内存（启动时调用一次）。
+///
+/// 顺序很重要：文件是追加写的，"最旧在前"，所以按读出的顺序 push 就得到正确的 LRU 顺序。
+pub fn restore_cache(path: &std::path::Path) {
+    let records = crate::core::translate_cache::load(path);
+    if records.is_empty() {
+        return;
+    }
+    let count = records.len();
+    with_cache(|cache| {
+        for (key, text, provider) in records {
+            cache.put(
+                key,
+                TranslateResult {
+                    text,
+                    provider,
+                    elapsed_ms: 0.0,
+                    cached: false,
+                },
+            );
+        }
+    });
+    crate::core::logs::line(format!("translate cache restored {count} entries"));
 }
 
 // ---------------------------------------------------------------- 路由
@@ -200,7 +228,9 @@ pub async fn translate(text: &str, config: &TranslateConfig) -> Result<Translate
         elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
         cached: false,
     };
-    with_cache(|cache| cache.put(key, result.clone()));
+    with_cache(|cache| cache.put(key.clone(), result.clone()));
+    // 落盘：重启后同一段落不必再走网络
+    crate::core::translate_cache::append(&key, &result.text, &result.provider);
     crate::core::logs::line(format!(
         "translate ok provider={} chars={} elapsed={:.0}ms",
         result.provider,

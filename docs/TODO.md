@@ -93,8 +93,7 @@ GDI 无关的播放（`PlaySound`）、语速设置、"合成完卸模型"（实
 | 8 | 翻译段落对齐 | 选中多段时现在整段送翻译，中文语序会被打散；应按段落块分别翻译再对齐 |
 | 9 | 更多翻译 provider | Bing / DeepL / 本地小模型（llama.cpp）。当前只有 Google gtx（免密）与 OpenAI 兼容 |
 | 10 | 剪贴板全格式保存/恢复 | T2 兜底现在只恢复纯文本，图片/文件/富文本会丢 |
-| 11 | 翻译缓存持久化 | 现在是进程内 LRU（256 条，重启失效）；可落到 redb |
-| 12 | API Key 更安全的存放 | 现在明文存 `settings.json`（本机个人工具可接受，公开分发需要改 Windows 凭据管理器） |
+| 11 | ✅ **翻译缓存持久化** | JSONL 落盘（2 MB 上限 / 256 条），跨进程命中实测 0 ms。见 `feature/2026-11-04-translate-cache-persistence.md` || 12 | API Key 更安全的存放 | 现在明文存 `settings.json`（本机个人工具可接受，公开分发需要改 Windows 凭据管理器） |
 | 13 | CI 跑门禁 | `.github/workflows/ci.yml` 已写但仓库未启用 Actions；`verify-notes` 也没进 CI |
 | 14 | 性能 SLO 回归门禁 | `docs/PERF.md` 的指标目前靠手动跑脚本，没有"低于阈值就红"的机制 |
 | 15 | 安装包 / 自动更新 / 签名 | NSIS 能出包，但没有签名、没有 updater 配置 |
