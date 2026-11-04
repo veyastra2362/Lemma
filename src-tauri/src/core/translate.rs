@@ -179,14 +179,15 @@ pub async fn translate(text: &str, config: &TranslateConfig) -> Result<Translate
 
     let key = cache_key(text, config.target);
     if let Some(hit) = with_cache(|cache| cache.get(&key)) {
+        crate::core::logs::line(format!(
+            "translate cache hit chars={}",
+            text.chars().count()
+        ));
         return Ok(hit);
     }
 
     let started = Instant::now();
-    let (translated, provider_name) = match config.provider {
-        ProviderKind::Google => (google::translate(text, config.target).await?, "google"),
-        ProviderKind::OpenAi => (openai::translate(text, config).await?, "openai"),
-    };
+    let (translated, provider_name) = call_provider(text, config).await?;
 
     let result = TranslateResult {
         text: translated,
@@ -195,7 +196,63 @@ pub async fn translate(text: &str, config: &TranslateConfig) -> Result<Translate
         cached: false,
     };
     with_cache(|cache| cache.put(key, result.clone()));
+    crate::core::logs::line(format!(
+        "translate ok provider={} chars={} elapsed={:.0}ms",
+        result.provider,
+        text.chars().count(),
+        result.elapsed_ms
+    ));
     Ok(result)
+}
+
+/// 调一次 provider；失败重试一次。
+///
+/// 免密端点偶发超时/限流，一次失败就报错太脆。重试前等 400ms，
+/// 但**不重试配置类错误**（没填 Key 之类重试也没用）。
+async fn call_provider(
+    text: &str,
+    config: &TranslateConfig,
+) -> Result<(String, &'static str), String> {
+    let mut last_error = String::new();
+    for round in 0..2 {
+        if round > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        }
+
+        let result = match config.provider {
+            ProviderKind::Google => google::translate(text, config.target)
+                .await
+                .map(|value| (value, "google")),
+            ProviderKind::OpenAi => openai::translate(text, config)
+                .await
+                .map(|value| (value, "openai")),
+        };
+
+        match result {
+            Ok(pair) => {
+                if round > 0 {
+                    crate::core::logs::line("translate retry ok");
+                }
+                return Ok(pair);
+            }
+            Err(error) => {
+                last_error = error;
+                // 配置类错误重试无意义
+                if last_error.contains("API Key")
+                    || last_error.contains("请求模型接口失败：builder")
+                {
+                    break;
+                }
+                crate::core::logs::line(format!(
+                    "translate attempt {} failed: {}",
+                    round + 1,
+                    truncate(&last_error, 120)
+                ));
+            }
+        }
+    }
+
+    Err(last_error)
 }
 
 // ---------------------------------------------------------------- Google gtx

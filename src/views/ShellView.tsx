@@ -5,7 +5,7 @@ import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t, tDeckCollapsed } from "../i18n";
 import { ipc, isTauri } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
-import { useDeckStore, type Card } from "../store/useDeckStore";
+import { shouldTranslate, useDeckStore, type Card } from "../store/useDeckStore";
 import type { CardSections, Settings } from "../types";
 import { tokenize } from "../utils/tokens";
 
@@ -256,16 +256,14 @@ export function ShellView() {
   }, [cards, settings, showHints]);
 
   // 句卡片：一旦出现就去翻译（异步，不挡 HUD 首帧）。
-  const translatedCard = useRef<number | null>(null);
+  //
+  // 幂等只靠 `translation.status === "idle"` 判断，**不要**再拿卡片 id 做去重：
+  // 每次呼出 Deck 都会 reset，根卡片 id 恒为 0，用 id 去重会导致「只有第一次会翻译」。
   const rootCard = cards[0];
   useEffect(() => {
-    if (!rootCard || !rootCard.original || rootCard.translation.status !== "idle") {
+    if (!shouldTranslate(rootCard)) {
       return;
     }
-    if (translatedCard.current === rootCard.id) {
-      return;
-    }
-    translatedCard.current = rootCard.id;
     const cardId = rootCard.id;
     setTranslation(cardId, { status: "loading" });
     void ipc

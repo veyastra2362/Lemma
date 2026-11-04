@@ -5,7 +5,7 @@
  * 等真的需要第二语言时把 `t()` 换成 i18next 即可，调用点不用动。
  */
 const zhCN = {
-  appName: "Trans",
+  appName: "Lemma",
   hudTagline: "高频深度阅读辅助",
   hudEmptyTitle: "取词链路未接入",
   hudEmptyBody: "M1 会在这里显示选区原文、词性与释义。现在先验证呼出链路与延迟预算。",

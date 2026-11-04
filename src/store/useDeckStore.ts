@@ -34,6 +34,19 @@ export interface Card {
 
 const MAX_DEPTH = 24;
 
+/**
+ * 这张卡片现在该不该发起翻译。
+ *
+ * 抽成纯函数是为了钉住一个真实事故：早期用「卡片 id」做去重，
+ * 而每次呼出都会 reset、根卡片 id 恒为 0，结果**只有第一次会翻译**。
+ * 现在只认 `translation.status === "idle"`，互不干扰。
+ */
+export function shouldTranslate(
+  card: Card | undefined,
+): card is Card & { original: string } {
+  return Boolean(card && card.original && card.translation.status === "idle");
+}
+
 interface DeckState {
   cards: Card[];
   nextId: number;
