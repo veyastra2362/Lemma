@@ -1,6 +1,6 @@
 # Agent Note: ONNX 运行时选型与 OCR/TTS 探针结论
 
-Status: proposed
+Status: implemented
 
 ## Problem
 
@@ -11,7 +11,7 @@ M4（端侧 OCR）与 M5（离线朗读）都要跑 ONNX 模型，开工前有�
 2. 模型档位怎么选？PaddleOCR 有 mobile / server 两套，体积差 24 倍。
 3. 内存能不能守住？项目口径是主进程常驻 30–60 MB（见 `docs/PERF.md`）。
 
-## Proposal
+## Decision
 
 1. **OCR 用 `ort`**（ONNX Runtime 绑定）；`tract` 已实测不可行。
 2. **只用 mobile 模型，不提供"高精度"档**。server det 实测 734 ms / 399 MB 且精度无提升。
@@ -34,7 +34,7 @@ M4（端侧 OCR）与 M5（离线朗读）都要跑 ONNX 模型，开工前有�
 - **TTS 用 espeak-ng 做音素化**：现成、语言多、一条命令出音素。否决原因是 GPL 许可与原生依赖
   的边界争议——本项目是 MIT，动态加载的法律边界不清晰，静态链接会传染。
 
-## Acceptance criteria
+## Testing
 
 - M4b：真实截图（深色 UI 白字、非整数缩放）上，端到端 < 300 ms，且识别准确率肉眼可接受；
   DB 后处理按官方算法实现（最小外接矩形 + `area × unclip_ratio / perimeter`），斜体与透视文本能正确定位。
@@ -42,7 +42,7 @@ M4（端侧 OCR）与 M5（离线朗读）都要跑 ONNX 模型，开工前有�
 - M5b：TTS 不进入常驻内存（子进程或按需加载），主进程 RSS 增量 < 20 MB。
 - M5b 前置：先定中文音素化方案（`docs/TODO.md` #20），否则模型跑得再快也念不出中文。
 
-## Risks
+## Consequences
 
 - 随包分发 onnxruntime 动态库会让安装包明显变大（约 +10–20 MB），且首次引入原生依赖，
   需要复核 `AGENTS.md` 的安全边界表述（加载正统原生库不属于"注入"，但要在规矩里写清楚）。

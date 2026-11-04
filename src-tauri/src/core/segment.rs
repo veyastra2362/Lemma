@@ -212,14 +212,22 @@ pub fn global() -> Option<&'static Segmenter> {
 /// 读词表：优先侧文件（快、不碰 redb 页），缺失或过期则从词库重建并补写。
 fn load_words() -> Result<Vec<String>, String> {
     let words_path = crate::core::paths::zh_words_path();
-    let dict_path = crate::core::paths::dict_path();
 
-    if let (Some(words_path), Some(dict_path)) = (&words_path, &dict_path)
+    let dict_count = crate::core::dict::global()
+        .map(|store| store.zh_len())
+        .unwrap_or(0);
+
+    if let Some(words_path) = &words_path
         && words_path.exists()
-        && is_fresh(words_path, dict_path)
         && let Ok(content) = std::fs::read_to_string(words_path)
+        && is_fresh(&content, dict_count)
     {
-        let words: Vec<String> = content.lines().map(str::to_string).collect();
+        let words: Vec<String> = content
+            .lines()
+            .skip(1)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect();
         if !words.is_empty() {
             return Ok(words);
         }
@@ -229,31 +237,39 @@ fn load_words() -> Result<Vec<String>, String> {
     let store = crate::core::dict::open_default()?;
     let words = store.zh_words()?;
     if let Some(words_path) = words_path {
-        write_side_file(&words_path, &words);
+        write_side_file(&words_path, &words, dict_count);
     }
     Ok(words)
 }
 
-/// 侧文件不能比词库旧——否则重新导入过 CC-CEDICT 却还在用旧词表。
-fn is_fresh(side: &std::path::Path, dict: &std::path::Path) -> bool {
-    let (Ok(side_meta), Ok(dict_meta)) = (side.metadata(), dict.metadata()) else {
+/// 侧文件是否还能用。
+///
+/// 原来比较 mtime，但**打开 redb 本身就会更新词库文件时间**，导致每次启动都判定过期、
+/// 白遍历一遍中文表（正是这套优化要避免的 23 MB 工作集）。
+/// 改成把词条数写在侧文件第一行，与词库 meta 里的 `zhCount` 比对——导入变了才失效。
+fn is_fresh(side_content: &str, dict_count: u64) -> bool {
+    let Some(first) = side_content.lines().next() else {
         return false;
     };
-    match (side_meta.modified(), dict_meta.modified()) {
-        // 允许 1 秒误差：写入顺序上侧文件在词库之后，但不该更旧。
-        (Ok(side_time), Ok(dict_time)) => {
-            side_time + std::time::Duration::from_secs(1) >= dict_time
-        }
-        _ => true,
-    }
+    let Some(value) = first.strip_prefix("#count=") else {
+        return false;
+    };
+    value
+        .trim()
+        .parse::<u64>()
+        .is_ok_and(|count| count == dict_count)
 }
 
 /// 写侧文件（排序去重，每行一词）。
-pub fn write_side_file(path: &std::path::Path, words: &[String]) {
+/// 写侧文件。`dict_count` 必须与词库 meta 的 `zhCount` 一致（用 `DictStore::zh_len()` 取），
+/// 否则下次加载会判定过期、白重建一遍。
+pub fn write_side_file(path: &std::path::Path, words: &[String], dict_count: u64) {
     let mut sorted: Vec<&str> = words.iter().map(String::as_str).collect();
     sorted.sort_unstable();
     sorted.dedup();
-    let mut content = sorted.join("\n");
+    // 第一行写词条数：加载时与词库 meta 比对，判断侧文件是否还能用
+    let mut content = format!("#count={dict_count}\n");
+    content.push_str(&sorted.join("\n"));
     content.push('\n');
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);

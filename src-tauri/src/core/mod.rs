@@ -15,3 +15,4 @@ pub mod text;
 pub mod translate;
 pub mod tray;
 pub mod trigger;
+pub mod tts;

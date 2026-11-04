@@ -62,6 +62,11 @@ pub fn try_run() -> bool {
             import_cedict(&args);
             true
         }
+        "--tts" => {
+            crate::platform::console::attach_parent();
+            tts(&args);
+            true
+        }
         "--capture" => {
             crate::platform::console::attach_parent();
             capture(&args);
@@ -211,6 +216,74 @@ fn import_dict(args: &[String]) {
 
 /// 翻译一段文本。不启动 GUI，用于验证翻译链路与测时。
 /// 无头验证分词：`lemma.exe --segment "当前进度：多服务商"`
+/// 合成中文语音并写 WAV，用于验证 TTS 链路与测时。
+fn tts(args: &[String]) {
+    let Some(text) = args.get(1) else {
+        eprintln!("用法：lemma.exe --tts <text> <out.wav>");
+        return;
+    };
+    let out = args
+        .get(2)
+        .cloned()
+        .unwrap_or_else(|| "tts-out.wav".to_string());
+    if !crate::core::tts::models_ready() {
+        eprintln!("TTS 模型不齐：需要 kokoro-zh-q8.onnx / tokenizer.json / voices/*.bin");
+        return;
+    }
+
+    let speed: f32 = std::env::var("LEMMA_TTS_SPEED")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1.0);
+
+    // 复跑用于区分冷热态
+    let repeat: usize = std::env::var("LEMMA_TTS_REPEAT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1);
+
+    if std::env::var("LEMMA_TTS_DEBUG").is_ok() {
+        match crate::core::tts::phonemes_for_text(text) {
+            Ok(phonemes) => println!("音素：{phonemes}"),
+            Err(error) => println!("音素化失败：{error}"),
+        }
+    }
+
+    let started = Instant::now();
+    let mut last = None;
+    for _ in 0..repeat {
+        match crate::core::tts::speak_text(text, speed) {
+            Ok(speech) => last = Some(speech),
+            Err(error) => {
+                eprintln!("合成失败：{error}");
+                return;
+            }
+        }
+    }
+    let elapsed_total = started.elapsed().as_secs_f64() / repeat as f64;
+    let Some(speech) = last else {
+        eprintln!("没有合成结果");
+        return;
+    };
+    let duration = speech.duration_secs();
+    match crate::core::tts::save_wav(&speech, std::path::Path::new(&out)) {
+        Ok(()) => {
+            let peak = speech
+                .samples
+                .iter()
+                .fold(0.0f32, |acc, sample| acc.max(sample.abs()));
+            println!(
+                "合成 {:.2}s 音频，平均用时 {:.0} ms（RTF {:.2}x），峰值 {:.3} → {out}",
+                duration,
+                elapsed_total * 1000.0,
+                elapsed_total / duration.max(0.001) as f64,
+                peak
+            );
+        }
+        Err(error) => eprintln!("{error}"),
+    }
+}
+
 /// 截取屏幕矩形并保存，用于无头验证截图链路。
 fn capture(args: &[String]) {
     let (Some(rect), Some(out)) = (args.get(1), args.get(2)) else {
@@ -572,6 +645,8 @@ fn import_cedict(args: &[String]) {
     });
 
     let result = store.insert_zh_batch(entries, 20_000);
+    // 先记下权威词条数：侧文件的 #count 必须与它一致，加载时才判得"新鲜"
+    let dict_count = store.zh_len();
     // 必须先 drop 掉词库再写侧文件：redb 在 Database 关闭时才落盘，
     // 否则词库 mtime 会晚于侧文件，下次加载的新鲜度校验会失败、白走一遍 redb。
     drop(store);
@@ -587,7 +662,7 @@ fn import_cedict(args: &[String]) {
             }
             // 另存一份纯词表：分词器加载时顺序读它，不遍历 redb 中文表（省约 23 MB 工作集）。
             if let Some(words_path) = paths::zh_words_path() {
-                crate::core::segment::write_side_file(&words_path, &words);
+                crate::core::segment::write_side_file(&words_path, &words, dict_count);
                 println!("词表侧文件：{}", words_path.display());
             }
         }
