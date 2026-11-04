@@ -41,7 +41,7 @@ pub enum CaptureMode {
 pub enum ReaderOpenMode {
     /// 完全关闭：HUD 不显示入口，热键也不注册。
     Off,
-    /// 从 HUD 里点按钮打开（默认）。
+    /// 从 HUD 里点按钮打开。
     Hud,
     /// 用独立热键打开。
     Hotkey,
@@ -140,7 +140,8 @@ fn default_provider() -> ProviderKind {
 }
 
 fn default_reader_mode() -> ReaderOpenMode {
-    ReaderOpenMode::Hud
+    // 功能未定型前默认关闭：对不用它的人不该有任何存在感。
+    ReaderOpenMode::Off
 }
 
 fn default_reader_hotkey() -> String {

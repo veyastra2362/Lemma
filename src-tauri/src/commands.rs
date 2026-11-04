@@ -81,8 +81,16 @@ pub fn update_settings(
         crate::core::translate::clear_cache();
     }
 
+    // 只有影响"谁来呼出"的字段变了才重注册热键。
+    // 否则改个卡片高度也要去抢一次热键，一旦热键被别人占了，连无关设置都存不进去。
+    let trigger_changed = next.trigger != previous.trigger
+        || next.hotkey != previous.hotkey
+        || next.capture_mode != previous.capture_mode
+        || next.reader_open_mode != previous.reader_open_mode
+        || next.reader_hotkey != previous.reader_hotkey;
+
     let saved = store.set(next)?;
-    if let Err(error) = crate::core::trigger::apply(&app) {
+    if trigger_changed && let Err(error) = crate::core::trigger::apply(&app) {
         let _ = store.set(previous.clone());
         let _ = crate::core::trigger::apply(&app);
         return Err(error);

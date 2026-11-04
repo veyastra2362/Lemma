@@ -72,13 +72,12 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
                 });
                 shell::present_reader_on_main(app);
             });
-            match registered {
-                Ok(()) => logs::line(format!("trigger reader hotkey {}", settings.reader_hotkey)),
-                Err(error) => logs::line(format!(
-                    "reader hotkey failed（{}）：{error}",
-                    settings.reader_hotkey
-                )),
-            }
+            // 注册失败必须向上抛：否则用户看到"设置已保存"，但按键其实没生效。
+            // （AGENTS 不变式：不允许「存下来了但不生效」。）
+            registered.map_err(|error| {
+                format!("注册双栏热键「{}」失败：{error}", settings.reader_hotkey)
+            })?;
+            logs::line(format!("trigger reader hotkey {}", settings.reader_hotkey));
         } else {
             logs::line(format!(
                 "reader hotkey 格式不对：{}",

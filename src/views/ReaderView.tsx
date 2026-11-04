@@ -10,33 +10,36 @@ type BlockState =
   | { status: "done"; text: string; provider: string; cached: boolean }
   | { status: "error"; error: string };
 
-/** 点词后弹出的释义面板。 */
-interface Picked {
+/** 下探栈里的一层。 */
+interface Drill {
   word: string;
   entry: Entry | null;
 }
 
+const MAX_DRILL = 16;
+
 /**
- * 双栏对照窗口。
+ * 双栏对照窗口（深读工作台）。
  *
- * - 左原文右译文，块级一一对应（块由 Rust 侧切好，见 `core::reader::split_blocks`）；
+ * - 左原文右译文，块级一一对应（块由 Rust 侧 `core::reader::split_blocks` 切好）；
  * - 逐块串行翻译：块小、命中缓存概率高，也不会把免费接口打限流；
- * - 联动滚动按百分比同步；
- * - **窗口是隐藏复用的**，所以内容必须靠 `reader://reload` 事件刷新，不能只在挂载时拉一次；
- * - 译文里的词可点，弹出该词的词条（中文查中文表，英文查英文表）。
+ * - 两侧滚动按百分比联动；
+ * - **两栏文本都可点**：点词入下探栈，栈里的释义还能继续点（与 HUD 的 Deck 同构），`Esc` 逐层退；
+ * - **窗口是隐藏复用的**：内容靠 `reader://reload` 刷新，阅读位置按文本内容记忆。
  */
 export function ReaderView() {
   const [content, setContent] = useState<ReaderContent | null>(null);
   const [blocks, setBlocks] = useState<BlockState[]>([]);
-  const [picked, setPicked] = useState<Picked | null>(null);
+  const [drill, setDrill] = useState<Drill[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
   const syncing = useRef(false);
   const loadSeq = useRef(0);
+  /** 阅读位置记忆：同一段文本再次打开回到原处，换了文本就从头开始。 */
+  const scrollMemory = useRef<{ text: string; left: number; right: number } | null>(null);
 
-  /** 拉内容 + 逐块翻译。每次收到 reload 都整轮重来。 */
   const load = useCallback(() => {
     if (!isTauri()) {
       return () => undefined;
@@ -45,7 +48,7 @@ export function ReaderView() {
     loadSeq.current = seq;
     let cancelled = false;
 
-    setPicked(null);
+    setDrill([]);
     setError(null);
 
     void ipc
@@ -60,6 +63,10 @@ export function ReaderView() {
         }
         setContent(payload);
         setBlocks(payload.blocks.map(() => ({ status: "loading" })));
+
+        if (scrollMemory.current?.text !== payload.text) {
+          scrollMemory.current = { text: payload.text, left: 0, right: 0 };
+        }
 
         for (let index = 0; index < payload.blocks.length; index += 1) {
           if (cancelled || seq !== loadSeq.current) {
@@ -109,21 +116,39 @@ export function ReaderView() {
 
   useEffect(() => {
     const cancel = load();
-    return () => {
-      cancel();
-    };
+    return () => cancel();
   }, [load]);
 
-  // Esc 关闭；窗口复用后必须重新拉内容
+  // 恢复阅读位置（等布局稳定后再设）
+  useEffect(() => {
+    const memory = scrollMemory.current;
+    const left = leftRef.current;
+    const right = rightRef.current;
+    if (!memory || !left || !right) {
+      return;
+    }
+    const timer = window.requestAnimationFrame(() => {
+      left.scrollTop = memory.left;
+      right.scrollTop = memory.right;
+    });
+    return () => window.cancelAnimationFrame(timer);
+  }, [content]);
+
   useEffect(() => {
     if (!isTauri()) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        void ipc.closeReader();
+      if (event.key !== "Escape") {
+        return;
       }
+      event.preventDefault();
+      // 先退下探栈；栈空才关窗口。
+      if (drill.length > 0) {
+        setDrill((prev) => prev.slice(0, -1));
+        return;
+      }
+      void ipc.closeReader();
     };
     window.addEventListener("keydown", onKeyDown);
 
@@ -147,16 +172,18 @@ export function ReaderView() {
       unlisten?.();
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [load]);
+  }, [drill.length, load]);
 
-  // 联动滚动：任一侧滚动时按百分比同步另一侧
   const syncScroll = (from: "left" | "right") => {
-    if (syncing.current) {
-      return;
-    }
     const source = from === "left" ? leftRef.current : rightRef.current;
     const target = from === "left" ? rightRef.current : leftRef.current;
     if (!source || !target) {
+      return;
+    }
+    if (scrollMemory.current) {
+      scrollMemory.current[from] = source.scrollTop;
+    }
+    if (syncing.current) {
       return;
     }
     const sourceMax = source.scrollHeight - source.clientHeight;
@@ -171,16 +198,50 @@ export function ReaderView() {
     });
   };
 
-  /** 点译文里的词：查词条并弹出面板。 */
-  const pickWord = (word: string) => {
-    if (!isTauri()) {
+  /** 点词：查词条并压入下探栈。 */
+  const pushWord = (word: string) => {
+    const term = word.trim();
+    if (!isTauri() || !term) {
       return;
     }
+    setDrill((prev) => {
+      if (prev.length >= MAX_DRILL || prev.some((item) => item.word === term)) {
+        return prev;
+      }
+      return [...prev, { word: term, entry: null }];
+    });
     void ipc
-      .lookupWord(word)
-      .then((entry) => setPicked({ word, entry }))
-      .catch(() => setPicked({ word, entry: null }));
+      .lookupWord(term)
+      .then((entry) => {
+        setDrill((prev) =>
+          prev.map((item) => (item.word === term ? { ...item, entry } : item)),
+        );
+      })
+      .catch(() => undefined);
   };
+
+  const current = drill[drill.length - 1];
+
+  const renderClickable = (text: string, muted: boolean) => (
+    <>
+      {tokenize(text).map((token, index) =>
+        token.kind === "word" ? (
+          <button
+            type="button"
+            key={`${index}-${token.value}`}
+            onClick={() => pushWord(token.value)}
+            className={`rounded-sm underline decoration-dotted underline-offset-2 transition hover:bg-white/10 hover:decoration-[var(--hud-accent)] ${
+              muted ? "decoration-white/15" : "decoration-white/25"
+            }`}
+          >
+            {token.value}
+          </button>
+        ) : (
+          <span key={`${index}-sep`}>{token.value}</span>
+        ),
+      )}
+    </>
+  );
 
   return (
     <div
@@ -228,20 +289,7 @@ export function ReaderView() {
               key={index}
               className="mb-3 text-[13.5px] leading-[1.75] text-[var(--hud-text)]/90"
             >
-              {tokenize(block).map((token, tokenIndex) =>
-                token.kind === "word" ? (
-                  <button
-                    type="button"
-                    key={`${tokenIndex}-${token.value}`}
-                    onClick={() => pickWord(token.value)}
-                    className="rounded-sm underline decoration-dotted decoration-white/15 underline-offset-2 transition hover:bg-white/10 hover:decoration-[var(--hud-accent)]"
-                  >
-                    {token.value}
-                  </button>
-                ) : (
-                  <span key={`${tokenIndex}-sep`}>{token.value}</span>
-                ),
-              )}
+              {renderClickable(block, true)}
             </p>
           ))}
         </div>
@@ -255,20 +303,7 @@ export function ReaderView() {
             <div key={index} className="mb-3 min-h-[1.75em]">
               {block.status === "done" && (
                 <p className="text-[13.5px] leading-[1.75]">
-                  {tokenize(block.text).map((token, tokenIndex) =>
-                    token.kind === "word" ? (
-                      <button
-                        type="button"
-                        key={`${tokenIndex}-${token.value}`}
-                        onClick={() => pickWord(token.value)}
-                        className="rounded-sm underline decoration-dotted decoration-white/25 underline-offset-2 transition hover:bg-white/10 hover:decoration-[var(--hud-accent)]"
-                      >
-                        {token.value}
-                      </button>
-                    ) : (
-                      <span key={`${tokenIndex}-sep`}>{token.value}</span>
-                    ),
-                  )}
+                  {renderClickable(block.text, false)}
                 </p>
               )}
               {block.status === "loading" && (
@@ -286,37 +321,48 @@ export function ReaderView() {
         </div>
       </div>
 
-      {picked && (
+      {current && (
         <footer className="shrink-0 border-t border-white/8 bg-black/20 px-4 py-2">
-          <div className="flex items-baseline gap-2">
-            <span className="text-[15px] font-medium">{picked.word}</span>
-            {picked.entry?.phonetic && (
-              <span className="font-mono text-[11px] text-[var(--hud-muted)]">
-                /{picked.entry.phonetic}/
+          <div className="flex flex-wrap items-center gap-1 text-[11px] text-[var(--hud-muted)]">
+            {drill.map((item, index) => (
+              <span key={`${item.word}-${index}`} className="flex items-center gap-1">
+                {index > 0 && <span className="opacity-40">›</span>}
+                <button
+                  type="button"
+                  onClick={() => setDrill((prev) => prev.slice(0, index + 1))}
+                  className={
+                    index === drill.length - 1
+                      ? "text-[var(--hud-text)]"
+                      : "hover:text-white"
+                  }
+                >
+                  {item.word}
+                </button>
               </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setPicked(null)}
-              className="ml-auto rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] hover:border-white/30"
-            >
-              {t("hudHintEscape")}
-            </button>
+            ))}
+            <span className="ml-auto opacity-70">{t("readerEscHint")}</span>
           </div>
-          {picked.entry ? (
-            <div className="mt-1 space-y-0.5">
-              {picked.entry.translation
+
+          {current.entry?.phonetic && (
+            <p className="mt-1 font-mono text-[11px] text-[var(--hud-muted)]">
+              /{current.entry.phonetic}/
+            </p>
+          )}
+
+          {current.entry ? (
+            <div className="mt-0.5 max-h-32 space-y-0.5 overflow-y-auto">
+              {current.entry.translation
                 .split("\n")
                 .filter((line) => line.trim().length > 0)
-                .slice(0, 3)
+                .slice(0, 5)
                 .map((line, index) => (
                   <p key={index} className="text-[12px] leading-relaxed">
-                    {line}
+                    {renderClickable(line, true)}
                   </p>
                 ))}
             </div>
           ) : (
-            <p className="mt-1 text-[11px] text-[var(--hud-muted)]">
+            <p className="mt-0.5 text-[11px] text-[var(--hud-muted)]">
               {t("cardNotInDict")}
             </p>
           )}

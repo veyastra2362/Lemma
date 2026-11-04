@@ -187,7 +187,12 @@ pub async fn translate(text: &str, config: &TranslateConfig) -> Result<Translate
     }
 
     let started = Instant::now();
-    let (translated, provider_name) = call_provider(text, config).await?;
+    // 中文原文 + 译成中文 = 原样吐回来，纯属浪费一次往返。
+    // 读中文文档时用户想看的显然是英文，所以这里直接反向。
+    let mut effective = config.clone();
+    effective.target = effective_target(text, config);
+
+    let (translated, provider_name) = call_provider(text, &effective).await?;
 
     let result = TranslateResult {
         text: translated,
@@ -203,6 +208,16 @@ pub async fn translate(text: &str, config: &TranslateConfig) -> Result<Translate
         result.elapsed_ms
     ));
     Ok(result)
+}
+
+/// 决定实际的目标语言：中文原文 + 译成中文 = 原样返回，没有意义，直接反向成英文。
+fn effective_target(text: &str, config: &TranslateConfig) -> Lang {
+    let has_cjk = text.chars().any(crate::core::segment::is_cjk);
+    if config.target == Lang::Zh && has_cjk {
+        Lang::En
+    } else {
+        config.target
+    }
 }
 
 /// 调一次 provider；失败重试一次。
@@ -478,6 +493,24 @@ mod tests {
     fn empty_text_is_not_a_word() {
         assert!(!is_single_word(""));
         assert!(!is_single_word("   "));
+    }
+
+    /// 中文原文 + 译成中文只会原样返回，应自动反向成英文。
+    #[test]
+    fn chinese_source_flips_target_to_english() {
+        let mut config = TranslateConfig {
+            provider: ProviderKind::Google,
+            target: Lang::Zh,
+            base_url: String::new(),
+            api_key: String::new(),
+            model: String::new(),
+        };
+        assert_eq!(effective_target("这是一段中文。", &config), Lang::En);
+        // 英文原文不受影响
+        assert_eq!(effective_target("English text.", &config), Lang::Zh);
+        // 用户显式选英文时，中文原文也保持英文
+        config.target = Lang::En;
+        assert_eq!(effective_target("这是一段中文。", &config), Lang::En);
     }
 
     #[test]
