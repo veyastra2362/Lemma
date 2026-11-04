@@ -264,34 +264,73 @@ fn wire_settings_close<R: Runtime>(window: &WebviewWindow<R>) {
 pub const REGION_LABEL: &str = "ocr-region";
 pub const READER_LABEL: &str = "reader";
 
-/// 显示框选窗口，铺满整个虚拟桌面（含多屏负坐标）。
+/// 显示框选层：**每个显示器一个窗口**。
+///
+/// 为什么不是一个窗口铺满虚拟桌面：WebView2 每个窗口只有一套 `devicePixelRatio`。
+/// 一个跨屏窗口在 DPI 不同的副屏上会把内容拉伸，鼠标坐标换算就错了。
+/// 每屏一个窗口后，窗口的 DPR 恒等于它所在显示器的缩放，换算天然正确。
 pub fn present_region_select<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let window = ensure_window(app, REGION_LABEL)?;
-    wire_region_close(&window);
-
-    // 先铺满虚拟桌面再显示，否则用户看到的是默认尺寸
-    if let Some(bounds) = crate::platform::virtual_screen_bounds() {
-        let _ = window.set_position(tauri::PhysicalPosition::new(
-            bounds.origin.x,
-            bounds.origin.y,
-        ));
-        let _ = window.set_size(tauri::PhysicalSize::new(
-            bounds.size.width,
-            bounds.size.height,
-        ));
+    let monitors = app
+        .available_monitors()
+        .map_err(|e| format!("枚举显示器失败：{e}"))?;
+    if monitors.is_empty() {
+        return Err("没有可用显示器".to_string());
     }
 
-    window.show().map_err(|e| e.to_string())?;
-    let size = window.inner_size().map_err(|e| e.to_string())?;
-    if size.width > 0 && size.height > 0 {
-        let webview: &tauri::Webview<R> = window.as_ref();
-        webview.set_size(size).map_err(|e| e.to_string())?;
-        webview.show().map_err(|e| e.to_string())?;
+    for (index, monitor) in monitors.iter().enumerate() {
+        let label = region_label(index);
+        let window = match ensure_window(app, &label) {
+            Ok(window) => {
+                wire_region_close(&window);
+                window
+            }
+            Err(error) if index == 0 => return Err(error),
+            // 副屏窗口建不出来就跳过，至少主屏能用
+            Err(error) => {
+                logs::line(format!("region window {label} failed: {error}"));
+                continue;
+            }
+        };
+
+        let position = monitor.position();
+        let size = monitor.size();
+        let _ = window.set_position(tauri::PhysicalPosition::new(position.x, position.y));
+        let _ = window.set_size(tauri::PhysicalSize::new(size.width, size.height));
+
+        window.show().map_err(|e| e.to_string())?;
+        let inner = window.inner_size().map_err(|e| e.to_string())?;
+        if inner.width > 0 && inner.height > 0 {
+            let webview: &tauri::Webview<R> = window.as_ref();
+            webview.set_size(inner).map_err(|e| e.to_string())?;
+            webview.show().map_err(|e| e.to_string())?;
+        }
+        PlatformWindow::new(window.clone()).force_show();
+        let _ = window.emit("region://begin", ());
     }
-    PlatformWindow::new(window.clone()).force_show();
-    window.set_focus().map_err(|e| e.to_string())?;
-    let _ = window.emit("region://begin", ());
+
+    if let Some(first) = app.get_webview_window(&region_label(0)) {
+        let _ = first.set_focus();
+    }
     Ok(())
+}
+
+fn region_label(index: usize) -> String {
+    if index == 0 {
+        REGION_LABEL.to_string()
+    } else {
+        format!("{REGION_LABEL}-{index}")
+    }
+}
+
+/// 所有可能存在的框选层窗口（主屏 + 副屏）。
+fn region_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<WebviewWindow<R>> {
+    app.webview_windows()
+        .into_iter()
+        .filter(|(label, _)| {
+            label == REGION_LABEL || label.starts_with(&format!("{REGION_LABEL}-"))
+        })
+        .map(|(_, window)| window)
+        .collect()
 }
 
 /// 从任意线程打开框选层。
@@ -305,9 +344,9 @@ pub fn present_region_select_on_main<R: Runtime>(app: &AppHandle<R>) {
     });
 }
 
-/// 关掉框选层（截屏前必须先藏起来，否则会把自己也截进去）。
+/// 关掉所有框选层（截屏前必须先藏起来，否则会把自己也截进去）。
 pub fn hide_region_select<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(window) = app.get_webview_window(REGION_LABEL) {
+    for window in region_windows(app) {
         let _ = window.hide();
         PlatformWindow::new(window).force_hide();
     }

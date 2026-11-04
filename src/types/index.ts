@@ -61,6 +61,8 @@ export interface Settings {
   showHints: boolean;
   cardSections: CardSections;
   /** 翻译走哪个服务。 */
+  ocrHotkeyEnabled: boolean;
+  ocrHotkey: string;
   readerOpenMode: ReaderOpenMode;
   readerHotkey: string;
   translateProvider: TranslateProvider;

@@ -161,6 +161,20 @@ pub fn run() {
                 });
             }
 
+            // 框选层冒烟：只验证"每屏一个窗口 + 铺满"的显示路径（不点击）。
+            if std::env::var("LEMMA_REGION_UI_SMOKE").is_ok() {
+                match shell::present_region_select(handle) {
+                    Ok(()) => {
+                        let labels: Vec<String> = app
+                            .webview_windows()
+                            .into_keys()
+                            .filter(|label| label.starts_with("ocr-region"))
+                            .collect();
+                        logs::line(format!("region ui smoke ok windows={labels:?}"));
+                    }
+                    Err(error) => logs::line(format!("region ui smoke failed: {error}")),
+                }
+            }
             // 区域 OCR 冒烟：LEMMA_REGION_SMOKE="x,y,w,h" 直接跑「截图→OCR→装取词」整条链路。
             if let Ok(rect) = std::env::var("LEMMA_REGION_SMOKE") {
                 let parts: Vec<i32> = rect

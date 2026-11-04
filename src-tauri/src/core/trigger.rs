@@ -54,6 +54,32 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let manager = app.global_shortcut();
     manager.unregister_all().map_err(|e| e.to_string())?;
 
+    // 截图识别热键
+    if settings.ocr_hotkey_enabled {
+        match settings.ocr_hotkey.parse::<Shortcut>() {
+            Ok(shortcut) => {
+                let registered = manager.on_shortcut(shortcut, |app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        shell::present_region_select_on_main(app);
+                    }
+                });
+                if let Err(error) = registered {
+                    // 热键被别人占了：降级为只用托盘菜单，但要记下来
+                    logs::line(format!(
+                        "ocr hotkey failed（{}）：{error}（托盘菜单仍可用）",
+                        settings.ocr_hotkey
+                    ));
+                } else {
+                    logs::line(format!("trigger ocr hotkey {}", settings.ocr_hotkey));
+                }
+            }
+            Err(error) => logs::line(format!(
+                "ocr hotkey 格式不对（{}）：{error}",
+                settings.ocr_hotkey
+            )),
+        }
+    }
+
     // 双栏热键独立于呼出热键，按自己的开关决定是否注册。
     if settings.reader_open_mode == ReaderOpenMode::Hotkey {
         if let Ok(reader_shortcut) = settings.reader_hotkey.parse::<Shortcut>() {

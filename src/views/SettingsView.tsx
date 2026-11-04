@@ -138,7 +138,7 @@ export function SettingsView() {
   const settings = useAppStore((state) => state.settings);
   const setSettings = useAppStore((state) => state.setSettings);
 
-  const [recordingTarget, setRecordingTarget] = useState<null | "hud" | "reader">(null);
+  const [recordingTarget, setRecordingTarget] = useState<null | "hud" | "reader" | "ocr">(null);
   const recording = recordingTarget !== null;
   const [error, setError] = useState<string | null>(null);
 
@@ -202,7 +202,10 @@ export function SettingsView() {
         setError(t("settingsHotkeyRule"));
         return;
       }
-      if (recordingTarget === "reader") {
+      if (recordingTarget === "ocr") {
+        setRecordingTarget(null);
+        apply({ ocrHotkey: combo });
+      } else if (recordingTarget === "reader") {
         setRecordingTarget(null);
         apply({ readerHotkey: combo });
       } else {
@@ -316,6 +319,49 @@ export function SettingsView() {
                 onClick={() => apply({ captureMode: option.value })}
               />
             ))}
+          </div>
+        </section>
+
+        {/* ---- 截图识别 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionOcr")}
+          </h2>
+          <div className="space-y-1.5">
+            <Radio
+              active={settings?.ocrHotkeyEnabled !== false}
+              label={t("settingsOcrToggle")}
+              hint={t("settingsOcrToggleHint")}
+              onClick={() => apply({ ocrHotkeyEnabled: true })}
+            />
+            <Radio
+              active={settings?.ocrHotkeyEnabled === false}
+              label={t("settingsReaderOff")}
+              hint={t("hudHintSettings")}
+              onClick={() => apply({ ocrHotkeyEnabled: false })}
+            />
+            {settings && settings.ocrHotkeyEnabled !== false && (
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2">
+                <span className="text-[12px] text-[var(--hud-muted)]">
+                  {t("settingsOcrHotkeyLabel")}
+                </span>
+                <span className="ml-auto font-mono text-[12px] text-[var(--hud-accent)]">
+                  {settings.ocrHotkey}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setRecordingTarget(recordingTarget === "ocr" ? null : "ocr");
+                  }}
+                  className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
+                >
+                  {recordingTarget === "ocr"
+                    ? t("settingsHotkeyRecording")
+                    : t("settingsHotkeyRecord")}
+                </button>
+              </div>
+            )}
           </div>
         </section>
 

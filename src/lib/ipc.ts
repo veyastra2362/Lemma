@@ -75,12 +75,16 @@ export const ipc = {
     invoke<Capture>("run_region_ocr", rect),
   startRegionSelect: () => invoke<void>("start_region_select"),
   cancelRegionSelect: () => invoke<void>("cancel_region_select"),
-  /** 框选窗口左上角在虚拟桌面里的物理坐标（多屏可能为负）。 */
+  /**
+   * 本框选窗口左上角的**物理**坐标（多屏可能为负）。
+   *
+   * 每个显示器一个框选窗口，所以这个窗口的 DPI 恒等于它所在显示器的缩放，
+   * "物理位置 + CSS × devicePixelRatio" 就一定能算出正确的物理矩形。
+   */
   regionWindowOrigin: async (): Promise<{ x: number; y: number }> => {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    const position = await getCurrentWindow().outerPosition();
-    const scale = window.devicePixelRatio || 1;
-    return { x: Math.round(position.x / scale) * scale, y: Math.round(position.y / scale) * scale };
+    const position = await getCurrentWindow().innerPosition();
+    return { x: position.x, y: position.y };
   },
 
   /** 打开双栏窗口并显示这段文本。 */

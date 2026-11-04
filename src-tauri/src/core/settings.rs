@@ -47,6 +47,9 @@ pub enum ReaderOpenMode {
     Hotkey,
 }
 
+/// 截图识别热键的默认值。
+pub const DEFAULT_OCR_HOTKEY: &str = "Alt+S";
+
 /// 双栏窗口的默认热键（仅在 mode == Hotkey 时注册）。
 pub const DEFAULT_READER_HOTKEY: &str = "Alt+R";
 
@@ -100,6 +103,11 @@ pub struct Settings {
     /// 是否显示 HUD 底部那排快捷键提示。
     #[serde(default = "default_true")]
     pub show_hints: bool,
+    /// 截图识别是否注册热键。托盘菜单始终可用，这里只管热键。
+    #[serde(default = "default_true")]
+    pub ocr_hotkey_enabled: bool,
+    #[serde(default = "default_ocr_hotkey")]
+    pub ocr_hotkey: String,
     /// 双栏阅读窗口的打开方式。
     #[serde(default = "default_reader_mode")]
     pub reader_open_mode: ReaderOpenMode,
@@ -144,6 +152,10 @@ fn default_reader_mode() -> ReaderOpenMode {
     ReaderOpenMode::Off
 }
 
+fn default_ocr_hotkey() -> String {
+    DEFAULT_OCR_HOTKEY.to_string()
+}
+
 fn default_reader_hotkey() -> String {
     DEFAULT_READER_HOTKEY.to_string()
 }
@@ -168,6 +180,8 @@ impl Default for Settings {
             capture_mode: default_capture_mode(),
             hud_max_height: default_hud_max_height(),
             show_hints: true,
+            ocr_hotkey_enabled: true,
+            ocr_hotkey: default_ocr_hotkey(),
             reader_open_mode: default_reader_mode(),
             reader_hotkey: default_reader_hotkey(),
             translate_provider: default_provider(),

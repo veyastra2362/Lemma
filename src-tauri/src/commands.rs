@@ -87,7 +87,9 @@ pub fn update_settings(
         || next.hotkey != previous.hotkey
         || next.capture_mode != previous.capture_mode
         || next.reader_open_mode != previous.reader_open_mode
-        || next.reader_hotkey != previous.reader_hotkey;
+        || next.reader_hotkey != previous.reader_hotkey
+        || next.ocr_hotkey_enabled != previous.ocr_hotkey_enabled
+        || next.ocr_hotkey != previous.ocr_hotkey;
 
     let saved = store.set(next)?;
     if trigger_changed && let Err(error) = crate::core::trigger::apply(&app) {
