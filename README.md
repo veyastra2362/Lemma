@@ -147,6 +147,11 @@ cargo test
 
 约定与踩过的坑见 [`AGENTS.md`](AGENTS.md)；重要改动的**理由与取舍**见 [`.agents/notes/`](.agents/notes/)。
 
+## 探针结论（M4a / M5a）
+
+实测数据见 [`docs/ONNX-PROBE.md`](docs/ONNX-PROBE.md)，探针代码在 `tools/onnx-probe/`。
+一句话：**OCR 的 mobile 模型够快（40+48 ms），TTS 的内存取不下（242 MB），且中文音素化没有纯 Rust 方案。**
+
 ## 路线图
 
 | 里程碑 | 内容 |

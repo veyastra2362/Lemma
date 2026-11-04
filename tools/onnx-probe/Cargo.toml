@@ -1,0 +1,11 @@
+# M4a 探针：独立 crate，不进主工程依赖（正式接入在 M4b）。
+[package]
+name = "onnx-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ort = "=2.0.0-rc.10"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+ndarray = "0.16"
