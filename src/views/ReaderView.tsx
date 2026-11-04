@@ -561,7 +561,8 @@ export function ReaderView() {
             ))}
           </div>
         )}
-        {speechReady && /[\u4e00-\u9fff]/.test(content?.text ?? "") && (
+                {/* 与 HUD 一致：只要有文本就给朗读入口（英文也支持），不再只认中文 */}
+        {speechReady && (content?.text ?? "").trim().length > 0 && (
           <button
             type="button"
             onClick={() => {
