@@ -7,16 +7,6 @@ import { useAppStore } from "../store/useAppStore";
 import type { CaptureMode, CardSections, ModelStatus, Settings } from "../types";
 import { formatHotkey } from "../utils/hotkey";
 
-const ROADMAP = [
-  { id: "M0", label: "骨架 · 单例 · 触发 · 性能基线", done: true },
-  { id: "M1", label: "三档取词 + 上下文", done: true },
-  { id: "M2", label: "redb 词库 + 卡片栈下探", done: true },
-  { id: "M3", label: "翻译分层路由 + 双栏", done: false },
-  { id: "M4", label: "PP-OCRv5 端侧 OCR", done: false },
-  { id: "M5", label: "Kokoro 流式朗读", done: false },
-  { id: "M6", label: "标注层 / 原地回填", done: false },
-] as const;
-
 const CAPTURE_OPTIONS: { value: CaptureMode; label: string; hint: string }[] = [
   { value: "auto", label: t("settingsCaptureAuto"), hint: t("settingsCaptureAutoHint") },
   {
@@ -683,39 +673,6 @@ export function SettingsView() {
           </div>
         </section>
 
-        {/* ---- 里程碑 ---- */}
-        <section className="mt-5 pb-2">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionRoadmap")}
-          </h2>
-          <ul className="space-y-1">
-            {ROADMAP.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-center gap-2 rounded-md px-2 py-1 text-[12px]"
-              >
-                <span
-                  className="font-mono text-[11px]"
-                  style={{
-                    color: item.done ? "var(--hud-accent)" : "var(--hud-muted)",
-                  }}
-                >
-                  {item.id}
-                </span>
-                <span
-                  className={
-                    item.done ? "text-[var(--hud-text)]" : "text-[var(--hud-muted)]"
-                  }
-                >
-                  {item.label}
-                </span>
-                {item.done && (
-                  <span className="ml-auto text-[11px] text-[var(--hud-accent)]">完成</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
       </main>
     </div>
   );

@@ -104,7 +104,6 @@ const zhCN = {
   settingsStartup: "冷启动到托盘就绪",
   settingsPresents: "累计呼出次数",
   settingsLastPaint: "最近一次呼出延迟",
-  settingsSectionRoadmap: "里程碑",
   noData: "暂无数据",
 } as const;
 

@@ -83,6 +83,10 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
   （`report_first_paint`），不接受 Rust 侧 `show()` 返回时刻作为数据点。
 - 报内存必须写清口径：是否含模型权重、是否含 WebView2 子进程。
 - 报 OCR/TTS 延迟必须区分冷启动与热态。
+- **报坐标必须说明是不是 DPI 虚拟化坐标**：PowerShell 之类的进程不是 DPI 感知的，
+  `GetWindowRect` 拿到的是**虚拟化**尺寸（本机 125% 缩放下，物理 900×725 会报成 720×580）。
+  拿这个坐标去截物理像素必然错位——我为此白查了一小时"设置窗口比面板窄"的假 bug。
+  核对布局请用 `LEMMA_CAPTURE_WINDOW_SMOKE=<label>`（进程内取矩形，物理像素）。
 
 ## 安全边界（不要突破）
 

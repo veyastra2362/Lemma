@@ -524,5 +524,23 @@ pub fn present_settings<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
 
     PlatformWindow::new(window.clone()).force_show();
     window.set_focus().map_err(|e| e.to_string())?;
+
+    // 诊断：设置窗口的三组真实尺寸（曾出现"面板比窗口宽"的怪现象）
+    let outer = window
+        .outer_size()
+        .map(|s| (s.width, s.height))
+        .unwrap_or((0, 0));
+    let inner = window
+        .inner_size()
+        .map(|s| (s.width, s.height))
+        .unwrap_or((0, 0));
+    let position = window
+        .outer_position()
+        .map(|p| (p.x, p.y))
+        .unwrap_or((0, 0));
+    logs::line(format!(
+        "settings geometry pos={position:?} outer={outer:?} inner={inner:?} scale={:.2}",
+        window.scale_factor().unwrap_or(1.0)
+    ));
     Ok(())
 }

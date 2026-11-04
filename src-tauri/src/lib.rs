@@ -205,6 +205,44 @@ pub fn run() {
                     Err(error) => logs::line(format!("speak smoke failed: {error}")),
                 }
             }
+            // 窗口截图冒烟：LEMMA_CAPTURE_WINDOW_SMOKE=settings|reader|shell
+            // 为什么要有：PowerShell 不是 DPI 感知进程，GetWindowRect 给的是虚拟化坐标，
+            // 用它去截物理像素会错位（本机 125% 缩放下踩过）。进程内取矩形才是准的。
+            if let Ok(label) = std::env::var("LEMMA_CAPTURE_WINDOW_SMOKE") {
+                let handle = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(1800)).await;
+                    let Some(window) = handle.get_webview_window(&label) else {
+                        logs::line(format!("capture window: 找不到 {label}"));
+                        return;
+                    };
+                    let Ok(position) = window.outer_position() else {
+                        return;
+                    };
+                    let Ok(size) = window.outer_size() else {
+                        return;
+                    };
+                    let path = std::env::temp_dir().join(format!("lemma-window-{label}.png"));
+                    match crate::platform::capture_region(position.x, position.y, size.width, size.height) {
+                        Ok(shot) => {
+                            let _ = image::save_buffer(
+                                &path,
+                                &shot.pixels,
+                                shot.width,
+                                shot.height,
+                                image::ColorType::Rgb8,
+                            );
+                            logs::line(format!(
+                                "capture window {label}: pos={:?} size={:?} → {}",
+                                (position.x, position.y),
+                                (size.width, size.height),
+                                path.display()
+                            ));
+                        }
+                        Err(error) => logs::line(format!("capture window failed: {error}")),
+                    }
+                });
+            }
             // 设置窗口冒烟：用于截图核对布局（不点托盘也能看）
             if std::env::var("LEMMA_SETTINGS_SMOKE").is_ok() {
                 match shell::present_settings(handle) {
