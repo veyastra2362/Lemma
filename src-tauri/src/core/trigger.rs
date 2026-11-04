@@ -13,8 +13,7 @@ use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::core::double_tap::DoubleTap;
-use crate::core::reader::{self, ReaderPayload};
-use crate::core::settings::{ReaderOpenMode, SettingsStore, Trigger};
+use crate::core::settings::{SettingsStore, Trigger};
 use crate::core::{logs, selection, shell};
 use crate::platform;
 
@@ -80,35 +79,9 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         }
     }
 
-    // 双栏热键独立于呼出热键，按自己的开关决定是否注册。
-    if settings.reader_open_mode == ReaderOpenMode::Hotkey {
-        if let Ok(reader_shortcut) = settings.reader_hotkey.parse::<Shortcut>() {
-            let mode = settings.capture_mode;
-            let registered = manager.on_shortcut(reader_shortcut, move |app, _shortcut, event| {
-                if event.state != ShortcutState::Pressed {
-                    return;
-                }
-                let capture = selection::capture(mode);
-                if capture.text.trim().is_empty() {
-                    return;
-                }
-                reader::set_payload(ReaderPayload::text_only(capture.text, capture.app));
-                shell::present_reader_on_main(app);
-            });
-            // 注册失败必须向上抛：否则用户看到"设置已保存"，但按键其实没生效。
-            // （AGENTS 不变式：不允许「存下来了但不生效」。）
-            registered.map_err(|error| {
-                format!("注册双栏热键「{}」失败：{error}", settings.reader_hotkey)
-            })?;
-            logs::line(format!("trigger reader hotkey {}", settings.reader_hotkey));
-        } else {
-            logs::line(format!(
-                "reader hotkey 格式不对：{}",
-                settings.reader_hotkey
-            ));
-        }
-    }
-
+    // 双栏热键已移除：双栏只从「截图结果」上的按钮进入。
+    // 用热键开一个"取词得到的纯文本双栏"是多余的一条路（HUD 里已经并排显示了原文与译文）。
+    // `reader_hotkey` 字段保留只为兼容旧配置，不再注册任何键。
     if settings.trigger != Trigger::Hotkey {
         logs::line("trigger mode doubleControl");
         return Ok(());

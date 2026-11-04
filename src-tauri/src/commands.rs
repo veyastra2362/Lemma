@@ -228,14 +228,14 @@ pub async fn open_reader(app: AppHandle, text: String, source: String) -> Result
     if text.trim().is_empty() {
         return Err("没有可对照的文本".to_string());
     }
-    // 截图 OCR 已经存了带图的 payload；用纯文本覆盖会让「图文对照」退化成纯文字。
-    let already_image = crate::core::reader::payload()
+    // 双栏定位为**截图的对照阅读**：一屏文字 + 逐块对照才有意义。
+    // 选一个词/一句话时 HUD 里本来就是原文+译文并排，再开个窗口重复一遍是多余的。
+    let has_image = crate::core::reader::payload()
         .is_some_and(|payload| payload.image.is_some() && payload.text == text);
-    if !already_image {
-        crate::core::reader::set_payload(crate::core::reader::ReaderPayload::text_only(
-            text, source,
-        ));
+    if !has_image {
+        return Err("双栏只用来看截图对照；选词结果直接在 HUD 里看即可".to_string());
     }
+    let _ = source;
     match crate::core::shell::present_reader(&app) {
         Ok(()) => {
             crate::core::logs::line("reader opened");

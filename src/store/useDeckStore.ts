@@ -32,6 +32,13 @@ export interface Card {
   source: string | null;
   /** 取词耗时，仅根卡片显示。 */
   elapsedMs: number | null;
+  /**
+   * 是不是截图识别的结果。
+   *
+   * 双栏只对截图开放（一屏文字 + 逐块对照才有意义）；
+   * 不靠 `source` 那个展示字符串判断，避免文案一改就失效。
+   */
+  screenshot: boolean;
 }
 
 const MAX_DEPTH = 24;
@@ -83,6 +90,7 @@ export const useDeckStore = create<DeckState>((set, get) => ({
       candidates: capture.candidates ?? [],
       source: `${capture.app || "?"} · ${capture.tier ?? "-"}`,
       elapsedMs: capture.elapsedMs,
+      screenshot: capture.tier === "ocr",
     };
     set({ cards: word ? [card] : [], nextId: 1 });
   },
@@ -112,6 +120,7 @@ export const useDeckStore = create<DeckState>((set, get) => ({
           candidates: [],
           source: null,
           elapsedMs: null,
+          screenshot: false,
         },
       ],
       nextId: nextId + 1,

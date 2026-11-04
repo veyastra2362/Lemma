@@ -469,11 +469,14 @@ export function SettingsView() {
           </div>
         </section>
 
-        {/* ---- 双栏对照窗口 ---- */}
+        {/* ---- 截图对照窗口（原「双栏」） ---- */}
         <section className="mt-5">
           <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
             {t("settingsSectionReader")}
           </h2>
+          <p className="mb-2 text-[11px] leading-relaxed text-[var(--hud-muted)]">
+            {t("settingsReaderIntro")}
+          </p>
           <div className="space-y-1.5">
             <Radio
               active={settings?.readerOpenMode === "off"}
@@ -482,39 +485,13 @@ export function SettingsView() {
               onClick={() => apply({ readerOpenMode: "off" })}
             />
             <Radio
-              active={settings?.readerOpenMode === "hud"}
+              // 旧的 hotkey 模式已移除（那是"取词后开纯文本双栏"，与 HUD 重复），
+              // 存量配置里是 hotkey 的一律按"打开"处理
+              active={settings?.readerOpenMode !== "off"}
               label={t("settingsReaderHud")}
               hint={t("settingsReaderHudHint")}
               onClick={() => apply({ readerOpenMode: "hud" })}
             />
-            <Radio
-              active={settings?.readerOpenMode === "hotkey"}
-              label={t("settingsReaderHotkey")}
-              hint={t("settingsReaderHotkeyHint")}
-              onClick={() => apply({ readerOpenMode: "hotkey" })}
-            />
-            {settings?.readerOpenMode === "hotkey" && (
-              <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2">
-                <span className="text-[12px] text-[var(--hud-muted)]">
-                  {t("settingsReaderHotkeyLabel")}
-                </span>
-                <span className="ml-auto font-mono text-[12px] text-[var(--hud-accent)]">
-                  {settings.readerHotkey}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setRecordingTarget(recordingTarget === "reader" ? null : "reader");
-                  }}
-                  className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
-                >
-                  {recordingTarget === "reader"
-                    ? t("settingsHotkeyRecording")
-                    : t("settingsHotkeyRecord")}
-                </button>
-              </div>
-            )}
           </div>
         </section>
 

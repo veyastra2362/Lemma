@@ -488,7 +488,8 @@ export function ShellView() {
                 onWord={openWord}
                 collapsed={index < mounted.length - 1}
                 onOpenReader={
-                  settings?.readerOpenMode === "hud" ? openReader : null
+                  // 双栏只给截图结果：选词时 HUD 已经并排显示原文与译文，再开窗口是多余的
+                  settings?.readerOpenMode !== "off" && card.screenshot ? openReader : null
                 }
                 onSpeak={speechReady ? speak : null}
               />

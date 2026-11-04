@@ -104,7 +104,7 @@ export interface Settings {
 }
 
 /** 取词命中的档位，与 Rust 侧 `core::selection::Tier` 对应。 */
-export type CaptureTier = "selection" | "word" | "clipboard";
+export type CaptureTier = "selection" | "word" | "clipboard" | "ocr";
 
 /** 词库词条，与 Rust 侧 `core::dict::Entry` 对应。 */
 export interface Entry {
