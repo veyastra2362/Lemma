@@ -106,31 +106,96 @@ function Switch({
   );
 }
 
-/** 桌面风格下拉框：选项少了用不着占一排，选项多了也放得下。 */
-function Select<T extends string>({
+/**
+ * 下拉框。
+ *
+ * 不用原生 `<Dropdown>`：它的弹出层由系统绘制（浅色高亮、方角、字体不受控），
+ * 和这套石墨界面完全不搭。这里自己画，带勾选标记与键盘焦点。
+ */
+function Dropdown<T extends string>({
   value,
   options,
   onChange,
+  align = "right",
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (next: T) => void;
+  align?: "left" | "right";
 }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement | null>(null);
+
+  // 点外面关掉
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onDown = (event: PointerEvent) => {
+      if (box.current && !box.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  const current = options.find((option) => option.value === value);
+
   return (
-    <select
-      className="set-select"
-      value={value}
-      onChange={(event) => onChange(event.target.value as T)}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <div className="set-dd" ref={box}>
+      <button
+        type="button"
+        className="set-dd-btn"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span className="truncate">{current?.label ?? "—"}</span>
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M2 4 L5 7 L8 4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          className={`set-dd-panel ${align === "left" ? "is-left" : ""}`}
+          role="listbox"
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+        >
+          {options.map((option) => {
+            const selected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                className={`set-dd-item ${selected ? "is-on" : ""}`}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+              >
+                <span className="truncate">{option.label}</span>
+                {selected && (
+                  <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+                    <path d="M2.5 6.5 L4.8 8.8 L9.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
-
 function Range({
   value,
   min,
@@ -442,7 +507,7 @@ export function SettingsView() {
                     : t("settingsHotkeyRule")
                 }
               >
-                <Select
+                <Dropdown
                   value={isDoubleControl ? "doubleControl" : "hotkey"}
                   options={[
                     { value: "doubleControl", label: t("settingsTriggerDoubleControl") },
@@ -478,7 +543,7 @@ export function SettingsView() {
                   CAPTURE_OPTIONS.find((item) => item.value === settings?.captureMode)?.hint
                 }
               >
-                <Select
+                <Dropdown
                   value={(settings?.captureMode ?? "auto") as CaptureMode}
                   options={CAPTURE_OPTIONS.map((item) => ({
                     value: item.value,
@@ -566,7 +631,7 @@ export function SettingsView() {
                     : t("settingsReaderHudHint")
                 }
               >
-                <Select
+                <Dropdown
                   value={settings?.readerOpenMode === "off" ? "off" : "hud"}
                   options={[
                     { value: "hud", label: t("settingsReaderHud") },
@@ -588,7 +653,7 @@ export function SettingsView() {
                     : t("settingsTranslateGoogleHint")
                 }
               >
-                <Select
+                <Dropdown
                   value={settings?.translateProvider ?? "google"}
                   options={[
                     { value: "google", label: t("settingsTranslateGoogle") },
@@ -759,8 +824,9 @@ const SET_STYLES = `
     color: var(--hud-muted);
     cursor: pointer;
   }
-  .set-nav:hover { color: var(--hud-text); background: var(--hud-raised); }
-  .set-nav.is-on { color: var(--hud-text); background: var(--hud-raised); }
+  .set-nav:hover { color: var(--hud-text); }
+  /* 选中态只靠左侧 2px 陶土条 + 文字变亮；不再整块铺底色（会看起来像"可以勾选的框"） */
+  .set-nav.is-on { color: var(--hud-text); background: transparent; }
   .set-nav.is-on::before {
     content: "";
     position: absolute;
@@ -804,26 +870,56 @@ const SET_STYLES = `
   }
   .set-switch.is-on { background: var(--hud-accent-soft); border-color: var(--hud-accent); }
   .set-switch.is-on::after { transform: translateX(12px); background: var(--hud-accent); }
-  .set-select {
+  .set-dd { position: relative; }
+  .set-dd-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 168px;
+    justify-content: space-between;
     font: inherit;
     font-size: 13px;
-    padding: 3px 26px 3px 8px;
+    padding: 5px 9px 5px 11px;
     border: 1px solid var(--hud-border);
     border-radius: var(--hud-r-ctl);
-    background-color: var(--hud-raised);
+    background: var(--hud-raised);
     color: var(--hud-text);
     cursor: pointer;
-    appearance: none;
-    background-image: linear-gradient(45deg, transparent 50%, var(--hud-muted) 50%),
-      linear-gradient(135deg, var(--hud-muted) 50%, transparent 50%);
-    background-position: calc(100% - 12px) calc(50% - 1px), calc(100% - 8px) calc(50% - 1px);
-    background-size: 4px 4px, 4px 4px;
-    background-repeat: no-repeat;
   }
-  .set-select:hover { border-color: var(--hud-muted); }
-  .set-select:focus-visible { outline: 1px solid var(--hud-accent); outline-offset: 1px; }
-  .set-select option { background: var(--hud-surface); color: var(--hud-text); }
-
+  .set-dd-btn:hover { border-color: var(--hud-muted); }
+  .set-dd-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 30;
+    min-width: 100%;
+    padding: 4px;
+    border: 1px solid var(--hud-border);
+    border-radius: var(--hud-r-panel);
+    background: var(--hud-raised);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38);
+    animation: lm-fade 100ms ease-out both;
+  }
+  .set-dd-panel.is-left { left: 0; right: auto; }
+  .set-dd-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--hud-text);
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .set-dd-item:hover { background: var(--hud-surface); }
+  .set-dd-item.is-on { color: var(--hud-accent); }
   .set-btn {
     font: inherit;
     font-size: 12.5px;
