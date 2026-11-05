@@ -124,6 +124,25 @@ body {
   box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
 }
 
+/*
+  两个极小的状态过渡，只动透明度与 2px 位移。
+
+  为什么需要：没有它们时，"翻译中…"变成译文、点词下探换内容，都是**整块突变**，
+  看起来像闪了一下。120ms 的淡入足以把"突变"变成"变化"，又不至于变成装饰动画。
+*/
+@keyframes lm-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes lm-rise {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+
+.fade-in { animation: lm-fade 120ms var(--hud-ease) both; }
+.rise-in { animation: lm-rise 120ms var(--hud-ease) both; }
+
 /* 统一控件的过渡节奏：只过渡颜色与描边，不做缩放/位移。 */
 button,
 input,

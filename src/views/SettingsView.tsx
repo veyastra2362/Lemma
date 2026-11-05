@@ -75,9 +75,9 @@ function Row({
   return (
     <div className="set-row">
       <div className="min-w-0">
-        <div className="text-[12.5px]">{label}</div>
+        <div className="text-[14px]">{label}</div>
         {hint && (
-          <p className="mt-0.5 text-[11px] leading-[1.55] text-[var(--hud-muted)]">{hint}</p>
+          <p className="mt-0.5 text-[12.5px] leading-[1.55] text-[var(--hud-muted)]">{hint}</p>
         )}
       </div>
       {children && <div className="ml-auto flex shrink-0 items-center gap-2">{children}</div>}
@@ -121,9 +121,9 @@ function Radio({
     <button type="button" onClick={onClick} className={`set-radio ${active ? "is-on" : ""}`}>
       <span className="set-radio-mark" />
       <span className="min-w-0">
-        <span className="block text-[12.5px]">{label}</span>
+        <span className="block text-[14px]">{label}</span>
         {hint && (
-          <span className="mt-0.5 block text-[11px] leading-[1.55] text-[var(--hud-muted)]">
+          <span className="mt-0.5 block text-[12.5px] leading-[1.55] text-[var(--hud-muted)]">
             {hint}
           </span>
         )}
@@ -187,7 +187,7 @@ function TextField({
 
   return (
     <label className="block border-b border-[var(--hud-border-soft)] py-2 last:border-b-0">
-      <span className="block text-[12.5px]">{label}</span>
+      <span className="block text-[14px]">{label}</span>
       <input
         type={secret ? "password" : "text"}
         value={draft}
@@ -198,7 +198,7 @@ function TextField({
             commit();
           }
         }}
-        className="mt-1 w-full border-b border-[var(--hud-border)] bg-transparent pb-1 font-mono text-[12px] text-[var(--hud-text)] outline-none placeholder:text-[var(--hud-faint)] focus:border-[var(--hud-accent)]"
+        className="mt-1 w-full border-b border-[var(--hud-border)] bg-transparent pb-1 font-mono text-[13.5px] text-[var(--hud-text)] outline-none placeholder:text-[var(--hud-faint)] focus:border-[var(--hud-accent)]"
         placeholder={hint}
       />
     </label>
@@ -220,7 +220,7 @@ function ModelRow({
   return (
     <div className="border-b border-[var(--hud-border-soft)] py-2.5 last:border-b-0">
       <div className="flex items-center gap-2">
-        <span className="text-[12.5px]">{label}</span>
+        <span className="text-[14px]">{label}</span>
         <span className={`set-status ${ready ? "is-ok" : "is-off"}`}>
           <i />
           {ready ? t("settingsModelReady") : t("settingsModelMissing")}
@@ -229,7 +229,7 @@ function ModelRow({
           {t("settingsModelOpen")}
         </button>
       </div>
-      <p className="mt-1 break-all font-mono text-[10.5px] text-[var(--hud-faint)]">{dir}</p>
+      <p className="mt-1 break-all font-mono text-[12px] text-[var(--hud-faint)]">{dir}</p>
     </div>
   );
 }
@@ -362,8 +362,8 @@ export function SettingsView() {
       <style>{SET_STYLES}</style>
 
       <header className="flex shrink-0 items-center gap-2 border-b border-[var(--hud-border-soft)] px-4 py-2">
-        <span className="text-[12px] text-[var(--hud-muted)]">{t("appName")}</span>
-        <span className="text-[12px]">{t("settingsTitle")}</span>
+        <span className="text-[13.5px] text-[var(--hud-muted)]">{t("appName")}</span>
+        <span className="text-[13.5px]">{t("settingsTitle")}</span>
         <button
           type="button"
           onClick={() => void ipc.closeSettings()}
@@ -376,7 +376,7 @@ export function SettingsView() {
       </header>
 
       {error && (
-        <p className="shrink-0 border-b border-[var(--hud-border-soft)] px-4 py-1.5 text-[11px] text-[var(--hud-err)]">
+        <p className="shrink-0 border-b border-[var(--hud-border-soft)] px-4 py-1.5 text-[12.5px] text-[var(--hud-err)]">
           {error}
         </p>
       )}
@@ -485,7 +485,7 @@ export function SettingsView() {
                   step={0.05}
                   onCommit={(value) => apply({ speechSpeed: Number(value.toFixed(2)) })}
                 />
-                <span className="w-11 text-right font-mono text-[11.5px] tabular-nums text-[var(--hud-muted)]">
+                <span className="w-11 text-right font-mono text-[13px] tabular-nums text-[var(--hud-muted)]">
                   {(settings?.speechSpeed ?? 1).toFixed(2)}×
                 </span>
               </Row>
@@ -647,7 +647,7 @@ export function SettingsView() {
                   step={20}
                   onCommit={(value) => apply({ hudMaxHeight: Math.round(value) })}
                 />
-                <span className="w-14 text-right font-mono text-[11.5px] tabular-nums text-[var(--hud-muted)]">
+                <span className="w-14 text-right font-mono text-[13px] tabular-nums text-[var(--hud-muted)]">
                   {settings?.hudMaxHeight ?? 420} px
                 </span>
               </Row>
@@ -723,7 +723,7 @@ const SET_STYLES = `
     display: block;
     width: 100%;
     font: inherit;
-    font-size: 12px;
+    font-size: 13.5px;
     text-align: left;
     padding: 6px 12px 6px 14px;
     border: 0;
@@ -743,8 +743,8 @@ const SET_STYLES = `
     background: var(--hud-accent);
     border-radius: 0 1px 1px 0;
   }
-  .set-h { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
-  .set-desc { margin: 0 0 12px; font-size: 11.5px; line-height: 1.6; color: var(--hud-muted); }
+  .set-h { margin: 0 0 2px; font-size: 14px; font-weight: 600; }
+  .set-desc { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--hud-muted); }
   .set-row {
     display: flex;
     align-items: center;
@@ -798,12 +798,13 @@ const SET_STYLES = `
     height: 10px;
     border-radius: 50%;
     background: var(--hud-muted);
+    transition: transform 120ms ease-out, background-color 120ms ease-out;
   }
   .set-switch.is-on { background: var(--hud-accent-soft); border-color: var(--hud-accent); }
   .set-switch.is-on::after { transform: translateX(12px); background: var(--hud-accent); }
   .set-btn {
     font: inherit;
-    font-size: 11px;
+    font-size: 12.5px;
     padding: 2px 8px;
     border: 1px solid var(--hud-border);
     border-radius: var(--hud-r-ctl);
@@ -814,7 +815,7 @@ const SET_STYLES = `
   .set-btn:hover { color: var(--hud-text); border-color: var(--hud-muted); }
   .set-ico {
     font: inherit;
-    font-size: 11px;
+    font-size: 12.5px;
     width: 19px;
     height: 19px;
     display: inline-grid;
@@ -826,7 +827,7 @@ const SET_STYLES = `
     cursor: pointer;
   }
   .set-ico:hover { color: var(--hud-text); border-color: var(--hud-border); }
-  .set-cap { display: inline-flex; gap: 3px; font-family: var(--hud-mono); font-size: 10.5px; }
+  .set-cap { display: inline-flex; gap: 3px; font-family: var(--hud-mono); font-size: 12px; }
   .set-cap span {
     padding: 1px 5px;
     border: 1px solid var(--hud-border);
@@ -838,7 +839,7 @@ const SET_STYLES = `
   .set-seg { display: inline-flex; border: 1px solid var(--hud-border); border-radius: var(--hud-r-ctl); overflow: hidden; }
   .set-seg button {
     font: inherit;
-    font-size: 11px;
+    font-size: 12.5px;
     padding: 3px 10px;
     border: 0;
     background: transparent;
@@ -847,7 +848,7 @@ const SET_STYLES = `
   }
   .set-seg button + button { border-left: 1px solid var(--hud-border); }
   .set-seg button.is-on { background: var(--hud-accent-soft); color: var(--hud-accent); }
-  .set-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+  .set-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; }
   .set-status i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
   .set-status.is-ok { color: var(--hud-ok); }
   .set-status.is-off { color: var(--hud-faint); }
@@ -865,12 +866,12 @@ const SET_STYLES = `
   }
   .set-perf div { padding: 10px 12px; }
   .set-perf div + div { border-left: 1px solid var(--hud-border-soft); }
-  .set-perf span { display: block; font-size: 10.5px; color: var(--hud-muted); }
+  .set-perf span { display: block; font-size: 12px; color: var(--hud-muted); }
   .set-perf b {
     display: block;
     margin-top: 3px;
     font-family: var(--hud-mono);
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
   }

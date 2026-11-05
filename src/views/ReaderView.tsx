@@ -540,14 +540,19 @@ export function ReaderView() {
     }
     if (block.status === "loading") {
       return (
-        <p className="text-[12px] text-[var(--hud-muted)]">{t("translateLoading")}</p>
+        <p key="loading" className="fade-in text-[12px] text-[var(--hud-muted)]">
+          {t("translateLoading")}
+        </p>
       );
     }
     if (block.status === "error") {
       return <p className="text-[11px] leading-relaxed text-red-300/80">{block.error}</p>;
     }
     return (
-      <p className={compact ? "text-[12px] leading-[1.6]" : "text-[13.5px] leading-[1.75]"}>
+      <p
+        key="done"
+        className={`fade-in ${compact ? "text-[12px] leading-[1.6]" : "text-[13.5px] leading-[1.75]"}`}
+      >
         {renderClickable(block.text, false)}
       </p>
     );
@@ -825,7 +830,7 @@ export function ReaderView() {
         </div>
       )}
       {current && (
-        <footer className="shrink-0 border-t border-[var(--hud-border-soft)] bg-[var(--hud-raised)] px-4 py-2">
+        <footer className="fade-in shrink-0 border-t border-[var(--hud-border-soft)] bg-[var(--hud-raised)] px-4 py-2">
           <div className="flex items-center gap-2">
             <span className="text-[12px] text-[var(--hud-text)]">{current.word}</span>
             {current.entry?.phonetic && (

@@ -128,10 +128,14 @@ function CardView({
     return (
       <div className="pb-1">
         {translation.status === "done" && (
-          <p className="text-[14px] leading-[1.7]">{translation.text}</p>
+          <p key="done" className="fade-in text-[14px] leading-[1.7]">
+            {translation.text}
+          </p>
         )}
         {translation.status === "loading" && (
-          <p className="text-[13px] text-[var(--hud-faint)]">{t("translateLoading")}</p>
+          <p key="loading" className="fade-in text-[13px] text-[var(--hud-faint)]">
+            {t("translateLoading")}
+          </p>
         )}
         {translation.status === "error" && (
           <>
@@ -538,20 +542,25 @@ export function ShellView() {
               </p>
             )}
             {mounted.map((card, index) => (
-              <CardView
+              <div
+                // 最上面那张（刚下探出来的）做一次 2px 上移淡入；旧卡片不动
                 key={card.id}
-                card={card}
-                sections={settings?.cardSections ?? null}
-                onWord={openWord}
-                collapsed={index < mounted.length - 1}
-                onOpenReader={
-                  // 双栏只给截图结果：选词时 HUD 已经并排显示原文与译文，再开窗口是多余的
-                  settings?.readerOpenMode !== "off" && card.screenshot ? openReader : null
-                }
-                onSpeak={speechReady ? speak : null}
-                speakOriginal={settings?.speakOriginal ?? true}
-                speakTranslation={settings?.speakTranslation ?? true}
-              />
+                className={index === mounted.length - 1 ? "rise-in" : undefined}
+              >
+                <CardView
+                  card={card}
+                  sections={settings?.cardSections ?? null}
+                  onWord={openWord}
+                  collapsed={index < mounted.length - 1}
+                  onOpenReader={
+                    // 双栏只给截图结果：选词时 HUD 已经并排显示原文与译文，再开窗口是多余的
+                    settings?.readerOpenMode !== "off" && card.screenshot ? openReader : null
+                  }
+                  onSpeak={speechReady ? speak : null}
+                  speakOriginal={settings?.speakOriginal ?? true}
+                  speakTranslation={settings?.speakTranslation ?? true}
+                />
+              </div>
             ))}
           </>
         )}
