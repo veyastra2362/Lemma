@@ -121,6 +121,11 @@ pub struct Settings {
     /// 朗读语速（Kokoro 的 speed 参数，1.0 为原速）。
     #[serde(default = "default_speech_speed")]
     pub speech_speed: f32,
+    /// 是否启用「中文释义」（点释义里的中文词查汉语词典）。
+    ///
+    /// 关掉时中文词不可点；没导入汉语词典数据时也会自动失效（查不到就是查不到）。
+    #[serde(default = "default_true")]
+    pub zh_defs: bool,
     /// 强调色。
     #[serde(default = "default_accent")]
     pub accent: Accent,
@@ -217,6 +222,7 @@ impl Default for Settings {
             hud_max_height: default_hud_max_height(),
             show_hints: true,
             speech_speed: default_speech_speed(),
+            zh_defs: true,
             accent: default_accent(),
             speak_original: true,
             speak_translation: true,

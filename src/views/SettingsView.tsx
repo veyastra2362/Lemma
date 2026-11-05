@@ -569,6 +569,20 @@ export function SettingsView() {
                 dir={models?.ttsDir ?? "—"}
                 onOpen={() => openDir("tts")}
               />
+              <div className="border-b border-[var(--hud-border-soft)] py-2.5 last:border-b-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12.5px]">{t("settingsModelZh")}</span>
+                  <span className={`set-status ${models?.zhDefs ? "is-ok" : "is-off"}`}>
+                    <i />
+                    {models?.zhDefs
+                      ? `${t("settingsModelReady")} · ${models.zhDefs.toLocaleString()}`
+                      : t("settingsModelMissing")}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] leading-[1.55] text-[var(--hud-muted)]">
+                  {t("settingsModelZhHint")}
+                </p>
+              </div>
           </section>
 
           <section id="set-speech" className="mb-7">
@@ -752,6 +766,13 @@ export function SettingsView() {
                   on={settings?.showHints ?? true}
                   label={t("settingsShowHints")}
                   onChange={(on) => apply({ showHints: on })}
+                />
+              </Row>
+              <Row label={t("settingsZhDefs")} hint={t("settingsZhDefsHint")}>
+                <Switch
+                  on={settings?.zhDefs ?? true}
+                  label={t("settingsZhDefs")}
+                  onChange={(on) => apply({ zhDefs: on })}
                 />
               </Row>
               <Row label={t("settingsSectionAccent")}>

@@ -503,29 +503,36 @@ export function ReaderView() {
 
   const current = lookup;
 
-  const renderClickable = (text: string, muted: boolean, baseWord = -1) => {
+  /**
+   * 渲染可点的词。
+   *
+   * `allowCjk = false` 时中文不参与点击：用户要求「点击范围先最小」——
+   * 中文释义只在**释义/译文**一侧可点，原文那一侧保持纯净，避免阅读时误触。
+   */
+  const renderClickable = (text: string, baseWord = -1, allowCjk = false) => {
     // baseWord >= 0 时把该段之前的累计词数加上，得到"全文第几个词"，用于跟读高亮
     let seen = 0;
     return (
       <>
         {tokenize(text).map((token, index) => {
-          const wordIndex = token.kind === "word" ? baseWord + seen++ : -1;
+          const clickable =
+            token.kind === "word" && (allowCjk || !/[\u3400-\u9fff]/.test(token.value));
+          const wordIndex = clickable ? baseWord + seen++ : -1;
           const isSpoken = baseWord >= 0 && wordIndex === spokenWord;
-          return token.kind === "word" ? (
+          if (!clickable) {
+            return <span key={`${index}-sep`}>{token.value}</span>;
+          }
+          return (
             <button
               type="button"
               key={`${index}-${token.value}`}
               onClick={() => pushWord(token.value)}
-              className={`border-b border-dashed pb-px ${
-                muted ? "border-[var(--hud-border)]" : "border-[var(--hud-border)]"
-              } hover:border-[var(--hud-muted)] hover:text-[var(--hud-text)] ${
+              className={`border-b border-dashed pb-px border-[var(--hud-border)] hover:border-[var(--hud-muted)] hover:text-[var(--hud-text)] ${
                 isSpoken ? "border-solid border-[var(--hud-accent)] bg-[var(--hud-accent-soft)]" : ""
               }`}
             >
               {token.value}
             </button>
-          ) : (
-            <span key={`${index}-sep`}>{token.value}</span>
           );
         })}
       </>
@@ -553,7 +560,8 @@ export function ReaderView() {
         key="done"
         className={`fade-in ${compact ? "text-[12px] leading-[1.6]" : "text-[13.5px] leading-[1.75]"}`}
       >
-        {renderClickable(block.text, false)}
+        {/* 译文这一侧允许点中文（查汉语词典）；原文那一侧不允许，避免误触 */}
+        {renderClickable(block.text, -1, true)}
       </p>
     );
   };
@@ -803,7 +811,7 @@ export function ReaderView() {
                   );
                 return (
                   <p key={index} className="mb-3 text-[13.5px] leading-[1.75]">
-                    {renderClickable(block, true, baseWord)}
+                    {renderClickable(block, baseWord)}
                   </p>
                 );
               })
@@ -864,7 +872,7 @@ export function ReaderView() {
                   return (
                     <p key={index} className="text-[12px] leading-relaxed">
                       {marker && <span>{marker}</span>}
-                      {renderClickable(body, true)}
+                      {renderClickable(body)}
                     </p>
                   );
                 })}

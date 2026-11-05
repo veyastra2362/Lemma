@@ -37,7 +37,21 @@ pub struct Entry {
 const TERMS: TableDefinition<&str, &[u8]> = TableDefinition::new("terms");
 /// 中文词条（CC-CEDICT 导入）：键是简体词，值是同样的 Entry 结构。
 const ZH_TERMS: TableDefinition<&str, &[u8]> = TableDefinition::new("zhTerms");
+/// 汉语释义（chinese-xinhua 导入）：键是词/字，值是一条中文解释。
+///
+/// 与 `zhTerms` 分开：那份是 CC-CEDICT（中→英），这份是汉语词典（中→中）。
+/// 两份数据都来自用户自己导入，互不依赖。
+const ZH_DEFS: TableDefinition<&str, &[u8]> = TableDefinition::new("zhDefs");
 const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
+
+/// 一条汉语词条。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ZhDef {
+    /// 拼音（汉字表里有；词语表没有）。
+    pub pinyin: String,
+    /// 中文解释，多义项用 `\n` 分隔。
+    pub definition: String,
+}
 
 /// 归一化：小写 + NFKC（全角转半角等）+ 去首尾空白。
 pub fn normalize(word: &str) -> String {
@@ -262,6 +276,86 @@ impl DictStore {
         Ok(written)
     }
 
+    /// 批量写入汉语释义（导入 CLI 用）。
+    pub fn insert_zh_defs_batch(
+        &self,
+        entries: impl Iterator<Item = (String, ZhDef)>,
+        chunk: usize,
+    ) -> Result<u64, String> {
+        let mut written = 0u64;
+        let mut buffer: Vec<(String, ZhDef)> = Vec::with_capacity(chunk);
+        for item in entries {
+            buffer.push(item);
+            if buffer.len() >= chunk {
+                written += self.flush_zh_defs(&buffer)?;
+                buffer.clear();
+            }
+        }
+        if !buffer.is_empty() {
+            written += self.flush_zh_defs(&buffer)?;
+        }
+
+        let txn = self.db.begin_write().map_err(|e| e.to_string())?;
+        {
+            let mut meta = txn.open_table(META).map_err(|e| e.to_string())?;
+            meta.insert("zhDefCount", written.to_string().as_str())
+                .map_err(|e| e.to_string())?;
+        }
+        txn.commit().map_err(|e| e.to_string())?;
+        Ok(written)
+    }
+
+    fn flush_zh_defs(&self, buffer: &[(String, ZhDef)]) -> Result<u64, String> {
+        let txn = self.db.begin_write().map_err(|e| e.to_string())?;
+        let mut written = 0u64;
+        {
+            let mut table = txn.open_table(ZH_DEFS).map_err(|e| e.to_string())?;
+            for (key, def) in buffer {
+                let bytes = postcard::to_allocvec(def).map_err(|e| e.to_string())?;
+                table
+                    .insert(key.as_str(), bytes.as_slice())
+                    .map_err(|e| e.to_string())?;
+                written += 1;
+            }
+        }
+        txn.commit().map_err(|e| e.to_string())?;
+        Ok(written)
+    }
+
+    /// 查一条汉语释义。
+    pub fn get_zh_def(&self, word: &str) -> Result<Option<ZhDef>, String> {
+        let key = word.trim();
+        if key.is_empty() {
+            return Ok(None);
+        }
+        let txn = self.db.begin_read().map_err(|e| e.to_string())?;
+        let Ok(table) = txn.open_table(ZH_DEFS) else {
+            return Ok(None);
+        };
+        let Some(raw) = table.get(key).map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        postcard::from_bytes::<ZhDef>(raw.value())
+            .map(Some)
+            .map_err(|e| e.to_string())
+    }
+
+    /// 汉语释义条数（0 表示没导入）。
+    pub fn zh_def_len(&self) -> u64 {
+        let Ok(txn) = self.db.begin_read() else {
+            return 0;
+        };
+        let Ok(table) = txn.open_table(META) else {
+            return 0;
+        };
+        table
+            .get("zhDefCount")
+            .ok()
+            .flatten()
+            .and_then(|value| value.value().parse().ok())
+            .unwrap_or(0)
+    }
+
     fn flush_zh(&self, buffer: &[(String, Entry)]) -> Result<u64, String> {
         let txn = self.db.begin_write().map_err(|e| e.to_string())?;
         {
@@ -358,16 +452,50 @@ pub fn open_default() -> Result<std::sync::Arc<DictStore>, String> {
 
 /// 查词：含汉字查中文表，否则查英文表。UI 只需要这一个入口。
 pub fn lookup_any(word: &str) -> Option<Entry> {
-    let store = global()?;
-    let has_cjk = word.chars().any(crate::core::segment::is_cjk);
-    if has_cjk {
-        store
-            .get_zh(word)
-            .ok()
-            .flatten()
-            .or_else(|| store.get(word).ok().flatten())
-    } else {
-        store.get(word).ok().flatten()
+    global()?.lookup_any(word)
+}
+
+impl DictStore {
+    /// 查一个词：英文走 `terms`，中文优先用汉语词典的解释、
+    /// 把 CC-CEDICT 的英文释义挪到"英文释义"栏。
+    ///
+    /// 做成方法而不是只用全局实例：CLI 已经持有自己的 `DictStore`，
+    /// 再走全局会因为 redb 独占锁而拿不到实例（踩过）。
+    pub fn lookup_any(&self, word: &str) -> Option<Entry> {
+        let store = self;
+        let has_cjk = word.chars().any(crate::core::segment::is_cjk);
+        if has_cjk {
+            let english = store.get_zh(word).ok().flatten();
+            let chinese = store.get_zh_def(word).ok().flatten();
+            match (english, chinese) {
+                (Some(mut entry), Some(def)) => {
+                    // 汉语词典的解释是"中文释义"，CEDICT 的英文释义挪到"英文释义"栏——
+                    // 原来两份数据共用一个字段，中文词会显示成英文（用户指出过）。
+                    if !def.definition.is_empty() {
+                        entry.definition = if entry.translation.is_empty() {
+                            entry.definition
+                        } else {
+                            entry.translation
+                        };
+                        entry.translation = def.definition;
+                    }
+                    if entry.phonetic.is_empty() && !def.pinyin.is_empty() {
+                        entry.phonetic = def.pinyin;
+                    }
+                    Some(entry)
+                }
+                (Some(entry), None) => Some(entry),
+                (None, Some(def)) => Some(Entry {
+                    word: word.to_string(),
+                    phonetic: def.pinyin,
+                    translation: def.definition,
+                    ..Default::default()
+                }),
+                (None, None) => store.get(word).ok().flatten(),
+            }
+        } else {
+            store.get(word).ok().flatten()
+        }
     }
 }
 

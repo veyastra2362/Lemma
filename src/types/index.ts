@@ -63,6 +63,8 @@ export interface ReaderContent {
 }
 
 export interface ModelStatus {
+  /** 汉语词典条数（0 = 没导入）。 */
+  zhDefs: number;
   ocrReady: boolean;
   ocrDir: string;
   ttsReady: boolean;
@@ -95,6 +97,8 @@ export interface Settings {
   cardSections: CardSections;
   /** 翻译走哪个服务。 */
   speechSpeed: number;
+  /** 是否启用「中文释义」（点释义里的中文词查汉语词典）。 */
+  zhDefs: boolean;
   /** 强调色（整套 UI 只有一个）。 */
   accent: Accent;
   /** 卡片上是否显示「朗读原文」。 */

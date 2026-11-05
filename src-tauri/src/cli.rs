@@ -57,6 +57,11 @@ pub fn try_run() -> bool {
             lookup(&args);
             true
         }
+        "--import-zh-defs" => {
+            crate::platform::console::attach_parent();
+            import_zh_defs(&args);
+            true
+        }
         "--import-cedict" => {
             crate::platform::console::attach_parent();
             import_cedict(&args);
@@ -846,12 +851,18 @@ fn lookup(args: &[String]) {
         }
     };
 
-    println!("词库：{} 条（{}）", store.len(), path.display());
+    println!(
+        "词库：{} 英文 / {} 中文 / {} 汉语释义（{}）",
+        store.len(),
+        store.zh_len(),
+        store.zh_def_len(),
+        path.display()
+    );
 
     let started = Instant::now();
     let mut hit = None;
     for _ in 0..repeat {
-        hit = store.get(word).ok().flatten();
+        hit = store.lookup_any(word);
     }
     let elapsed = started.elapsed();
     let per_query_us = elapsed.as_secs_f64() * 1_000_000.0 / f64::from(repeat.max(1));
@@ -881,4 +892,147 @@ fn lookup(args: &[String]) {
         elapsed.as_secs_f64() * 1000.0,
         per_query_us
     );
+}
+/// 导入汉语词典（chinese-xinhua 的 `word.json` 汉字 + `ci.json` 词语）。
+///
+/// 数据不进仓库：用户自己下载后指定目录，导入进 `dict.redb` 的 `zhDefs` 表。
+/// 只保留有解释的条目；词语用 `ci` 字段做键，汉字用 `word`。
+fn import_zh_defs(args: &[String]) {
+    let dir = args
+        .get(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("data/zh-dict"));
+    let Some(out) = paths::dict_path() else {
+        eprintln!("拿不到 %APPDATA%，无法确定词库位置");
+        return;
+    };
+    let word_path = dir.join("word.json");
+    let ci_path = dir.join("ci.json");
+    if !word_path.exists() && !ci_path.exists() {
+        eprintln!(
+            "在 {} 下既没找到 word.json（汉字）也没找到 ci.json（词语）",
+            dir.display()
+        );
+        return;
+    }
+
+    let store = match DictStore::open(&out) {
+        Ok(store) => store,
+        Err(error) => {
+            eprintln!("打开词库失败：{error}（应用正在运行时词库被独占，请先退出托盘里的 Lemma）");
+            return;
+        }
+    };
+
+    #[derive(serde::Deserialize)]
+    struct RawWord {
+        word: String,
+        #[serde(default)]
+        pinyin: String,
+        #[serde(default)]
+        explanation: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct RawCi {
+        ci: String,
+        #[serde(default)]
+        explanation: String,
+    }
+
+    let started = Instant::now();
+    // 汉字解释很长（含例句、多音字分列），只留前 600 字；词语解释本来就短，全留
+    const WORD_KEEP: usize = 600;
+
+    let mut items: Vec<(String, crate::core::dict::ZhDef)> = Vec::new();
+    for path in [&ci_path, &word_path] {
+        if !path.exists() {
+            continue;
+        }
+        println!("读取 {}", path.display());
+        if path == &ci_path {
+            match serde_json::from_reader::<_, Vec<RawCi>>(
+                std::fs::File::open(path).unwrap_or_else(|_| {
+                    eprintln!("打不开 {}", path.display());
+                    std::process::exit(1)
+                }),
+            ) {
+                Ok(list) => {
+                    for item in list {
+                        let text = normalize_explanation(&item.explanation);
+                        if !text.is_empty() {
+                            items.push((
+                                item.ci,
+                                crate::core::dict::ZhDef {
+                                    pinyin: String::new(),
+                                    definition: text,
+                                },
+                            ));
+                        }
+                    }
+                }
+                Err(error) => eprintln!("解析 ci.json 失败：{error}"),
+            }
+        } else {
+            match serde_json::from_reader::<_, Vec<RawWord>>(
+                std::fs::File::open(path).unwrap_or_else(|_| {
+                    eprintln!("打不开 {}", path.display());
+                    std::process::exit(1)
+                }),
+            ) {
+                Ok(list) => {
+                    for item in list {
+                        let text = normalize_explanation(&item.explanation);
+                        if text.is_empty() {
+                            continue;
+                        }
+                        let trimmed: String = text.chars().take(WORD_KEEP).collect();
+                        items.push((
+                            item.word,
+                            crate::core::dict::ZhDef {
+                                pinyin: item.pinyin,
+                                definition: trimmed,
+                            },
+                        ));
+                    }
+                }
+                Err(error) => eprintln!("解析 word.json 失败：{error}"),
+            }
+        }
+    }
+
+    println!("待写入 {} 条", items.len());
+    match store.insert_zh_defs_batch(items.into_iter(), 20_000) {
+        Ok(written) => {
+            drop(store);
+            println!(
+                "导入完成：{written} 条汉语词条，用时 {:.1}s",
+                started.elapsed().as_secs_f64()
+            );
+            if let Ok(meta) = std::fs::metadata(&out) {
+                println!("词库大小：{:.1} MB", meta.len() as f64 / (1024.0 * 1024.0));
+            }
+        }
+        Err(error) => eprintln!("写入失败：{error}"),
+    }
+}
+
+/// 把原始解释里的多余空白压掉：`\r`、连续空行都收成一个换行。
+fn normalize_explanation(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut last_newline = true;
+    for ch in raw.replace('\r', "").chars() {
+        if ch == '\n' {
+            if !last_newline {
+                out.push('\n');
+                last_newline = true;
+            }
+            continue;
+        }
+        if ch == ' ' && last_newline {
+            continue;
+        }
+        out.push(ch);
+        last_newline = false;
+    }
+    out.trim().to_string()
 }

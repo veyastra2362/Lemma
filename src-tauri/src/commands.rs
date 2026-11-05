@@ -295,6 +295,8 @@ pub fn close_reader(app: AppHandle) {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelStatus {
+    /// 汉语词典条数（0 = 没导入）。
+    pub zh_defs: u64,
     pub ocr_ready: bool,
     pub ocr_dir: String,
     pub tts_ready: bool,
@@ -304,6 +306,9 @@ pub struct ModelStatus {
 #[tauri::command]
 pub fn model_status() -> ModelStatus {
     ModelStatus {
+        zh_defs: crate::core::dict::open_default()
+            .map(|store| store.zh_def_len())
+            .unwrap_or(0),
         ocr_ready: crate::core::ocr::models_ready(),
         ocr_dir: crate::core::ocr::model_dir()
             .map(|dir| dir.display().to_string())
