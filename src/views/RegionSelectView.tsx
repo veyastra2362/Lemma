@@ -111,7 +111,7 @@ export function RegionSelectView() {
 
   return (
     <div
-      className="relative h-full w-full cursor-crosshair select-none bg-black/25"
+      className="rg-root relative h-full w-full cursor-crosshair select-none"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={(event) => void finish(event)}
@@ -120,40 +120,107 @@ export function RegionSelectView() {
         void ipc.cancelRegionSelect();
       }}
     >
+      <style>{REGION_STYLES}</style>
+
       {selection && selection.width > 0 && (
         <div
-          className="pointer-events-none absolute border border-[var(--hud-accent)] bg-[var(--hud-accent)]/10"
+          className="pointer-events-none absolute"
           style={{
             left: selection.x,
             top: selection.y,
             width: selection.width,
             height: selection.height,
+            border: "1.5px solid var(--hud-accent)",
+            borderRadius: 2,
           }}
         >
-          <span className="absolute -top-5 left-0 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] text-white/85">
+          {/* 四角标：清楚但不夸张，8px 方块，只描边 */}
+          <i className="rg-corner tl" />
+          <i className="rg-corner tr" />
+          <i className="rg-corner bl" />
+          <i className="rg-corner br" />
+          <span className="rg-size">
             {Math.round(selection.width)} × {Math.round(selection.height)}
           </span>
         </div>
       )}
 
       {!selection && !error && (
-        <div className="pointer-events-none absolute left-1/2 top-8 -translate-x-1/2 rounded-lg border border-white/15 bg-black/70 px-4 py-2 text-[12px] text-white/85">
-          {t("regionHint")}
-          {showHints && ` · ${t("regionHintCancel")}`}
+        <div className="rg-top">
+          <span>{t("regionHint")}</span>
+          {showHints && <span className="rg-top-sub">· {t("regionHintCancel")}</span>}
         </div>
       )}
 
       {busy && (
-        <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-white/15 bg-black/80 px-4 py-2 text-[12px] text-white/85">
-          {t("regionBusy")}
+        <div className="rg-busy">
+          <span className="rg-spinner" aria-hidden="true" />
+          <span>{t("regionBusy")}</span>
         </div>
       )}
 
       {error && (
-        <div className="absolute left-1/2 top-1/2 w-[min(480px,80vw)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-red-400/40 bg-black/85 px-4 py-3 text-[12px] text-red-300">
+        <div className="rg-error">
           {t("regionFailed")}：{error}
         </div>
       )}
     </div>
   );
 }
+
+/**
+ * 框选层样式。
+ *
+ * 遮罩是**中性黑 45%**（不是蓝黑、不加模糊）；选区内部只略微提亮，
+ * 让用户看清框住了什么；尺寸与提示都用等宽小字，不做发光与科技感描边。
+ */
+const REGION_STYLES = `
+  .rg-root { background: rgba(0, 0, 0, 0.45); }
+  .rg-corner {
+    position: absolute; width: 7px; height: 7px;
+    border: 1px solid var(--hud-accent);
+    background: var(--hud-canvas);
+  }
+  .rg-corner.tl { left: -4px; top: -4px; }
+  .rg-corner.tr { right: -4px; top: -4px; }
+  .rg-corner.bl { left: -4px; bottom: -4px; }
+  .rg-corner.br { right: -4px; bottom: -4px; }
+  .rg-size {
+    position: absolute; left: 0; top: -22px;
+    font-family: var(--hud-mono); font-size: 10.5px; font-variant-numeric: tabular-nums;
+    line-height: 17px; padding: 0 5px; border-radius: 3px;
+    background: var(--hud-accent); color: var(--hud-canvas);
+  }
+  .rg-top {
+    position: absolute; left: 50%; top: 22px; transform: translateX(-50%);
+    display: inline-flex; gap: 6px; align-items: baseline;
+    font-size: 12px; color: var(--hud-text);
+    background: var(--hud-surface); border: 1px solid var(--hud-border);
+    border-radius: var(--hud-r-ctl); padding: 4px 12px;
+    white-space: nowrap;
+  }
+  .rg-top-sub { font-size: 11px; color: var(--hud-faint); }
+  .rg-busy {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--hud-text);
+    background: var(--hud-surface); border: 1px solid var(--hud-border);
+    border-radius: var(--hud-r-ctl); padding: 6px 12px;
+  }
+  .rg-spinner {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 1.5px solid var(--hud-border); border-top-color: var(--hud-accent);
+    animation: rg-spin 720ms linear infinite;
+  }
+  @keyframes rg-spin { to { transform: rotate(360deg); } }
+  .rg-error {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(480px, 80vw);
+    font-size: 12px; line-height: 1.6; color: var(--hud-err);
+    background: var(--hud-surface); border: 1px solid var(--hud-err);
+    border-radius: var(--hud-r-ctl); padding: 10px 14px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rg-spinner { animation-duration: 2.4s; }
+  }
+`;
