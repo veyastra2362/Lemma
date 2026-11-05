@@ -16,7 +16,7 @@ const BREADCRUMB_HEIGHT_PX = 24;
 /** 底部提示栏的高度（隐藏时要从补偿里减掉） */
 const FOOTER_HEIGHT_PX = 30;
 /** 页眉最小高度 */
-const MIN_HEIGHT_PX = 132;
+const MIN_HEIGHT_PX = 148;
 /** 只挂最近几张卡片到 DOM——这是「物理挂载深度限制」的前端部分。 */
 const MAX_MOUNTED_CARDS = 3;
 
@@ -302,10 +302,13 @@ export function ShellView() {
     }
 
     const apply = () => {
-            const chrome =
+      // 面板四周各留 8px 透明边距（见 styles.css 的 --hud-gutter），高度回报要把它们算进来
+      const GUTTER_PX = 16;
+      const chrome =
         CHROME_HEIGHT_PX +
         (cards.length > 1 ? BREADCRUMB_HEIGHT_PX : 0) -
-        (showHints ? 0 : FOOTER_HEIGHT_PX);
+        (showHints ? 0 : FOOTER_HEIGHT_PX) +
+        GUTTER_PX;
       const desired = Math.max(
         MIN_HEIGHT_PX,
         Math.ceil(element.scrollHeight + chrome),
@@ -437,14 +440,7 @@ export function ShellView() {
   const collapsedUntil = cards.length - mounted.length;
 
   return (
-    <div
-      className="flex h-full w-full flex-col overflow-hidden rounded-2xl border text-[var(--hud-text)]"
-      style={{
-        borderColor: "var(--hud-border)",
-        background: "var(--hud-surface)",
-        boxShadow: "0 18px 48px oklch(0 0 0 / 45%)",
-      }}
-    >
+    <div className="lm-panel flex flex-col text-[var(--hud-text)]">
       <header
         data-tauri-drag-region
         className="flex shrink-0 items-center gap-2 border-b border-white/8 px-3 py-2"

@@ -568,10 +568,7 @@ export function ReaderView() {
   };
 
   return (
-    <div
-      className="flex h-full w-full flex-col overflow-hidden rounded-xl border text-[var(--hud-text)]"
-      style={{ borderColor: "var(--hud-border)", background: "var(--hud-surface)" }}
-    >
+    <div className="lm-panel flex flex-col text-[var(--hud-text)]">
       {/* 只有标题文字可拖拽：整块 header 挂 drag-region 会把按钮的点击吞掉（实测） */}
       <header className="flex shrink-0 items-center gap-2 border-b border-white/8 px-4 py-2.5">
         <span data-tauri-drag-region className="text-[13px] font-medium">

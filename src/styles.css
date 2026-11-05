@@ -99,6 +99,31 @@ body {
   background: transparent;
 }
 
+/*
+  窗口外壳的留白。
+
+  窗口是**矩形**，面板是**圆角**；如果面板铺满窗口，它的外阴影会被窗口边界裁掉，
+  四个角上就会露出一圈"直角阴影"（踩过）。所以面板四周留 8px 透明边距，
+  阴影在窗口内部自然淡出，圆角才是圆的。
+
+  `--hud-gutter` 在 Rust 侧也要算进去（`HUD_WIDTH` / HUD 高度回报）。
+*/
+:root {
+  --hud-gutter: 8px;
+}
+
+.lm-panel {
+  height: calc(100% - var(--hud-gutter) * 2);
+  width: calc(100% - var(--hud-gutter) * 2);
+  margin: var(--hud-gutter);
+  overflow: hidden;
+  border: 1px solid var(--hud-border);
+  border-radius: var(--hud-r-win);
+  background: var(--hud-surface);
+  /* 非常轻：只用来把浮层从背景里分出来 */
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+}
+
 /* 统一控件的过渡节奏：只过渡颜色与描边，不做缩放/位移。 */
 button,
 input,

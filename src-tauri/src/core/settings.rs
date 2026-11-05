@@ -93,9 +93,14 @@ impl Default for CardSections {
 pub const DEFAULT_HOTKEY: &str = "Alt+Q";
 
 /// HUD 逻辑宽度（固定），自适应只改高度。
-pub const HUD_WIDTH: f64 = 420.0;
+/// HUD 窗口宽度。
+///
+/// 比内容宽度多 16px：面板四周留 8px 透明边距，外阴影才不会被窗口边界裁成直边
+/// （见 `src/styles.css` 的 `--hud-gutter`）。
+pub const HUD_WIDTH: f64 = 436.0;
 /// HUD 最小高度。
-pub const HUD_MIN_HEIGHT: f64 = 132.0;
+/// HUD 最小高度（含上下各 8px 的透明边距）。
+pub const HUD_MIN_HEIGHT: f64 = 148.0;
 /// HUD 最大高度的上限（用户可在这个范围内调）。
 pub const HUD_MAX_HEIGHT_LIMIT: f64 = 720.0;
 

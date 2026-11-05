@@ -232,10 +232,7 @@ export function SettingsView() {
   const sections = settings?.cardSections;
 
   return (
-    <div
-      className="flex h-full w-full flex-col overflow-hidden rounded-xl border text-[var(--hud-text)]"
-      style={{ borderColor: "var(--hud-border)", background: "var(--hud-surface)" }}
-    >
+    <div className="lm-panel flex flex-col text-[var(--hud-text)]">
       <header
         data-tauri-drag-region
         className="flex shrink-0 items-center gap-2 border-b border-white/8 px-4 py-2.5"
