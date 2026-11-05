@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "../i18n";
 import { ipc, isTauri, onReaderReload } from "../lib/ipc";
 import type { Entry, ReaderBlock, ReaderContent, ReaderImage, SpeakResult } from "../types";
-import { tokenize } from "../utils/tokens";
+import { splitPosMarker, tokenize } from "../utils/tokens";
 
 type BlockState =
   | { status: "loading" }
@@ -858,11 +858,16 @@ export function ReaderView() {
                 .split("\n")
                 .filter((line) => line.trim().length > 0)
                 .slice(0, 5)
-                .map((line, index) => (
-                  <p key={index} className="text-[12px] leading-relaxed">
-                    {renderClickable(line, true)}
-                  </p>
-                ))}
+                .map((line, index) => {
+                  // 词性标记（`n.` / `[计]`）不是可查的词
+                  const [marker, body] = splitPosMarker(line);
+                  return (
+                    <p key={index} className="text-[12px] leading-relaxed">
+                      {marker && <span>{marker}</span>}
+                      {renderClickable(body, true)}
+                    </p>
+                  );
+                })}
             </div>
           ) : (
             <p className="mt-0.5 text-[11px] text-[var(--hud-muted)]">{t("cardNotInDict")}</p>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeTerm, tokenize } from "./tokens";
+import { normalizeTerm, splitPosMarker, tokenize } from "./tokens";
 
 const words = (text: string) =>
   tokenize(text)
@@ -47,5 +47,25 @@ describe("tokenize", () => {
 describe("normalizeTerm", () => {
   it("去空白并转小写", () => {
     expect(normalizeTerm("  Threshold ")).toBe("threshold");
+  });
+});
+
+describe("splitPosMarker", () => {
+  it("拆出词性标记", () => {
+    expect(splitPosMarker("n. 表征, 记号")).toEqual(["n. ", "表征, 记号"]);
+    expect(splitPosMarker("a. 象征的")).toEqual(["a. ", "象征的"]);
+    expect(splitPosMarker("prep. 关于")).toEqual(["prep. ", "关于"]);
+  });
+
+  it("拆出领域标记", () => {
+    expect(splitPosMarker("[计] 记账")).toEqual(["[计] ", "记账"]);
+  });
+
+  it("没有标记时原样返回", () => {
+    expect(splitPosMarker("表征, 记号")).toEqual(["", "表征, 记号"]);
+    expect(splitPosMarker("a subsidiary proposition")).toEqual([
+      "",
+      "a subsidiary proposition",
+    ]);
   });
 });

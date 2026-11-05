@@ -40,3 +40,20 @@ export function tokenize(text: string): Token[] {
 export function normalizeTerm(word: string): string {
   return word.trim().toLowerCase();
 }
+
+/**
+ * 释义行开头的**词性 / 领域标记**不是可以查的词，要拆出来当纯文本。
+ *
+ * ECDICT 的释义形如 `n. 表征, 记号, 代词`、`[计] 记账`、`a. 象征的`。
+ * 不拆的话 `n`、`a` 会被 tokenize 当成单词，变成可点链接——点了去查 "n"，
+ * 毫无意义（用户实测指出过）。
+ *
+ * 返回 `[标记, 正文]`；没有标记时标记为空串。
+ */
+export function splitPosMarker(line: string): [string, string] {
+  const match = line.match(/^(\[[^\]]{1,8}\]|[A-Za-z]{1,4}\.)[ \t]*/);
+  if (!match) {
+    return ["", line];
+  }
+  return [match[0], line.slice(match[0].length)];
+}

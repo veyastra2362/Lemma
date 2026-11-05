@@ -7,7 +7,7 @@ import { ipc, isTauri, onReaderSmoke } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
 import { shouldTranslate, useDeckStore, type Card } from "../store/useDeckStore";
 import type { CardSections, Settings } from "../types";
-import { tokenize } from "../utils/tokens";
+import { splitPosMarker, tokenize } from "../utils/tokens";
 
 /** header + footer + 主体上下内边距 */
 const CHROME_HEIGHT_PX = 92;
@@ -225,11 +225,19 @@ function CardView({
           {entry.translation
             .split("\n")
             .filter((line) => line.trim().length > 0)
-            .map((line, index) => (
-              <p key={`${index}-${line.slice(0, 8)}`} className="text-[13.5px] leading-[1.6]">
-                <WordLinks text={line} onWord={onWord} />
-              </p>
-            ))}
+            .map((line, index) => {
+              // 行首的 `n.` / `a.` / `[计]` 是词性标记，不能当可查的词
+              const [marker, body] = splitPosMarker(line);
+              return (
+                <p
+                  key={`${index}-${line.slice(0, 8)}`}
+                  className="text-[13.5px] leading-[1.6]"
+                >
+                  {marker && <span className="text-[var(--hud-muted)]">{marker}</span>}
+                  <WordLinks text={body} onWord={onWord} />
+                </p>
+              );
+            })}
         </div>
       )}
 
@@ -238,14 +246,18 @@ function CardView({
           {entry.definition
             .split("\n")
             .filter((line) => line.trim().length > 0)
-            .map((line, index) => (
-              <p
-                key={`def-${index}`}
-                className="text-[12px] leading-[1.65] text-[var(--hud-muted)]"
-              >
-                <WordLinks text={line} onWord={onWord} />
-              </p>
-            ))}
+            .map((line, index) => {
+              const [marker, body] = splitPosMarker(line);
+              return (
+                <p
+                  key={`def-${index}`}
+                  className="text-[12px] leading-[1.65] text-[var(--hud-muted)]"
+                >
+                  {marker && <span>{marker}</span>}
+                  <WordLinks text={body} onWord={onWord} />
+                </p>
+              );
+            })}
         </div>
       )}
 
