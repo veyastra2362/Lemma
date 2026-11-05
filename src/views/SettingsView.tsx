@@ -309,11 +309,13 @@ export function SettingsView() {
   /** 左侧导航高亮项：跟着右侧滚动位置走，不是"当前显示哪一页"。 */
   const [active, setActive] = useState<Category>("trigger");
   const scrollRef = useRef<HTMLElement | null>(null);
+  /** 点击导航后的一小段时间内不让滚动高亮改写选中项。 */
+  const lockUntil = useRef(0);
 
   /** 右侧滚到哪，左边就亮哪一项。 */
   const onScroll = useCallback(() => {
     const box = scrollRef.current;
-    if (!box) {
+    if (!box || Date.now() < lockUntil.current) {
       return;
     }
     // 滚到底部时，最后几节永远到不了顶部；此时直接判定为最后一节，
@@ -480,6 +482,9 @@ export function SettingsView() {
               key={item.key}
               type="button"
               onClick={() => {
+                // 先定住高亮：最后两节都滚不到"顶部"，否则会被"滚到底"的判据改写成最后一节
+                setActive(item.key);
+                lockUntil.current = Date.now() + 700;
                 document
                   .getElementById(`set-${item.key}`)
                   ?.scrollIntoView({ block: "start", behavior: "smooth" });

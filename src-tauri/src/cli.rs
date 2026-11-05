@@ -918,7 +918,7 @@ fn import_zh_defs(args: &[String]) {
         return;
     }
 
-    let store = match DictStore::open(&out) {
+    let store = match DictStore::open_for_bulk(&out) {
         Ok(store) => store,
         Err(error) => {
             eprintln!("打开词库失败：{error}（应用正在运行时词库被独占，请先退出托盘里的 Lemma）");
@@ -943,21 +943,27 @@ fn import_zh_defs(args: &[String]) {
 
     let started = Instant::now();
     // 汉字解释很长（含例句、多音字分列），只留前 600 字；词语解释本来就短，全留
-    const WORD_KEEP: usize = 600;
+    // 600 字时词库要多占 30 MB 左右；实测释义的主要义项都在前 300 字内。
+    const WORD_KEEP: usize = 300;
 
     let mut items: Vec<(String, crate::core::dict::ZhDef)> = Vec::new();
     for path in [&ci_path, &word_path] {
         if !path.exists() {
             continue;
         }
-        println!("读取 {}", path.display());
+        println!(
+            "读取 {}（已用 {:.1}s）",
+            path.display(),
+            started.elapsed().as_secs_f64()
+        );
         if path == &ci_path {
-            match serde_json::from_reader::<_, Vec<RawCi>>(
-                std::fs::File::open(path).unwrap_or_else(|_| {
-                    eprintln!("打不开 {}", path.display());
-                    std::process::exit(1)
-                }),
-            ) {
+            // 注意：`from_reader` 吃未缓冲的 File 会逐**字节**读（每个字节一次系统调用），
+            // 25 MB 就要 130 秒。整文件读成字符串再 from_str 快两个数量级。
+            match std::fs::read_to_string(path)
+                .map_err(|e| e.to_string())
+                .and_then(|text| {
+                    serde_json::from_str::<Vec<RawCi>>(&text).map_err(|e| e.to_string())
+                }) {
                 Ok(list) => {
                     for item in list {
                         let text = normalize_explanation(&item.explanation);
@@ -975,12 +981,12 @@ fn import_zh_defs(args: &[String]) {
                 Err(error) => eprintln!("解析 ci.json 失败：{error}"),
             }
         } else {
-            match serde_json::from_reader::<_, Vec<RawWord>>(
-                std::fs::File::open(path).unwrap_or_else(|_| {
-                    eprintln!("打不开 {}", path.display());
-                    std::process::exit(1)
-                }),
-            ) {
+            // 同上：整文件读入再解析，避免 from_reader 逐字节读
+            match std::fs::read_to_string(path)
+                .map_err(|e| e.to_string())
+                .and_then(|text| {
+                    serde_json::from_str::<Vec<RawWord>>(&text).map_err(|e| e.to_string())
+                }) {
                 Ok(list) => {
                     for item in list {
                         let text = normalize_explanation(&item.explanation);
@@ -1002,13 +1008,24 @@ fn import_zh_defs(args: &[String]) {
         }
     }
 
-    println!("待写入 {} 条", items.len());
-    match store.insert_zh_defs_batch(items.into_iter(), 20_000) {
+    println!(
+        "解析完成：{} 条，已用 {:.1}s",
+        items.len(),
+        started.elapsed().as_secs_f64()
+    );
+    // 一批写完：分批提交会让每一批都把相关页面重写一遍（实测 14 批 = 267 秒）。
+    // 28 万条一次性写入约 50 MB 内存，可以接受。
+    let total = items.len();
+    match store.insert_zh_defs_batch(items.into_iter(), total.max(1)) {
         Ok(written) => {
-            drop(store);
+            let compact_started = Instant::now();
+            if let Err(error) = store.compact() {
+                eprintln!("{error}");
+            }
             println!(
-                "导入完成：{written} 条汉语词条，用时 {:.1}s",
-                started.elapsed().as_secs_f64()
+                "导入完成：{written} 条汉语词条，用时 {:.1}s（压缩 {:.1}s）",
+                started.elapsed().as_secs_f64(),
+                compact_started.elapsed().as_secs_f64()
             );
             if let Ok(meta) = std::fs::metadata(&out) {
                 println!("词库大小：{:.1} MB", meta.len() as f64 / (1024.0 * 1024.0));
@@ -1020,6 +1037,11 @@ fn import_zh_defs(args: &[String]) {
 
 /// 把原始解释里的多余空白压掉：`\r`、连续空行都收成一个换行。
 fn normalize_explanation(raw: &str) -> String {
+    // 快速路径：绝大多数条目只是行尾空白，逐字符重建太浪费（28 万条会白花几十秒）
+    let trimmed = raw.trim();
+    if !trimmed.contains('\r') && !trimmed.contains("\n\n") {
+        return trimmed.to_string();
+    }
     let mut out = String::with_capacity(raw.len());
     let mut last_newline = true;
     for ch in raw.replace('\r', "").chars() {

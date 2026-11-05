@@ -85,6 +85,8 @@ fn fallback_keys(word: &str) -> Vec<String> {
 
 pub struct DictStore {
     db: Database,
+    /// 批量导入模式：写入用 `Durability::None`。
+    bulk: bool,
     path: PathBuf,
 }
 
@@ -99,7 +101,32 @@ impl DictStore {
         Ok(Self {
             db,
             path: path.to_path_buf(),
+            bulk: false,
         })
+    }
+
+    /// 导入专用的打开方式：后续写入用 `Durability::None`（不 fsync）。
+    ///
+    /// 默认每次提交都 fsync，28 万条分十几批写要 4 分钟（实测 266 秒）。
+    /// 批量导入中途崩了重跑即可，不需要逐批落盘的保证。
+    pub fn open_for_bulk(path: &Path) -> Result<Self, String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("建目录失败：{e}"))?;
+        }
+        let db = Database::create(path).map_err(|e| e.to_string())?;
+        Ok(Self {
+            db,
+            path: path.to_path_buf(),
+            bulk: true,
+        })
+    }
+
+    /// 收尾：压缩文件（回收批量写入留下的空洞）。
+    pub fn compact(mut self) -> Result<(), String> {
+        self.db
+            .compact()
+            .map_err(|e| format!("压缩词库失败：{e}"))?;
+        Ok(())
     }
 
     pub fn path(&self) -> &Path {
@@ -306,7 +333,10 @@ impl DictStore {
     }
 
     fn flush_zh_defs(&self, buffer: &[(String, ZhDef)]) -> Result<u64, String> {
-        let txn = self.db.begin_write().map_err(|e| e.to_string())?;
+        let mut txn = self.db.begin_write().map_err(|e| e.to_string())?;
+        if self.bulk {
+            let _ = txn.set_durability(redb::Durability::None);
+        }
         let mut written = 0u64;
         {
             let mut table = txn.open_table(ZH_DEFS).map_err(|e| e.to_string())?;
