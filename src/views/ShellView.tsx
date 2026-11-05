@@ -10,7 +10,8 @@ import type { CardSections, Settings } from "../types";
 import { splitPosMarker, tokenize } from "../utils/tokens";
 
 /** header + footer + 主体上下内边距 */
-const CHROME_HEIGHT_PX = 92;
+// header 36 + 主区上下内边距(12+4) + footer 31 + 面板四周留白 16 ≈ 99
+const CHROME_HEIGHT_PX = 83;
 /** 面包屑出现时多出来的高度 */
 const BREADCRUMB_HEIGHT_PX = 24;
 /** 底部提示栏的高度（隐藏时要从补偿里减掉） */
@@ -127,7 +128,7 @@ function CardView({
   if (card.original) {
     const translation = card.translation;
     return (
-      <div className="pb-1">
+      <div>
         {translation.status === "done" && (
           <p key="done" className="fade-in text-[14px] leading-[1.7]">
             {translation.text}
@@ -203,7 +204,7 @@ function CardView({
   }
 
   return (
-    <div className="pb-1">
+    <div>
       <div className="flex flex-wrap items-baseline gap-x-2">
         <p className="min-w-0 break-words font-[family-name:var(--hud-serif)] text-[19px] leading-tight">
           {card.word}
@@ -346,6 +347,13 @@ export function ShellView() {
         return;
       }
       lastRequested.current = desired;
+      // 诊断：内容高度与最终窗口高度对不上时，靠这行定位是"算多了"还是"没缩回"
+      void ipc
+        .logFrontend(
+          "info",
+          `hud height content=${element.scrollHeight} chrome=${chrome} desired=${desired} window=${Math.round(window.innerHeight)}`,
+        )
+        .catch(() => undefined);
       void ipc.resizeHud(desired).catch(() => undefined);
     };
 
@@ -531,7 +539,7 @@ export function ShellView() {
 
       {/* 量高度的必须是内层"内容"div：外层是滚动容器，内容不足时它的
           scrollHeight 等于容器高度，会让"算高度 → 改窗口 → 再算"形成自增循环。 */}
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-1">
         <div ref={contentRef}>
         {cards.length === 0 ? (
           <p className="text-[12px] leading-relaxed text-[var(--hud-muted)]">
