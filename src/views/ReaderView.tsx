@@ -52,6 +52,63 @@ function splitSentences(text: string): string[] {
   return sentences;
 }
 
+/** 对照窗口自己的控件样式（与浮层同一套令牌）。 */
+const READER_STYLES = `
+  .rv-seg { display: inline-flex; border: 1px solid var(--hud-border); border-radius: var(--hud-r-ctl); overflow: hidden; }
+  .rv-seg button {
+    font: inherit; font-size: 11px; padding: 2px 9px; border: 0; background: transparent;
+    color: var(--hud-muted); cursor: pointer;
+  }
+  .rv-seg button + button { border-left: 1px solid var(--hud-border); }
+  .rv-seg button.is-on { background: var(--hud-accent-soft); color: var(--hud-accent); }
+  .rv-btn {
+    font: inherit; font-size: 11px; padding: 2px 8px;
+    border: 1px solid var(--hud-border); border-radius: var(--hud-r-ctl);
+    background: transparent; color: var(--hud-muted); cursor: pointer;
+  }
+  .rv-btn:hover { color: var(--hud-text); border-color: var(--hud-muted); }
+  .rv-btn.is-on { border-color: var(--hud-accent); color: var(--hud-accent); }
+  .rv-ico {
+    font: inherit; font-size: 11px; width: 19px; height: 19px;
+    display: inline-grid; place-items: center;
+    border: 1px solid transparent; border-radius: var(--hud-r-ctl);
+    background: transparent; color: var(--hud-faint); cursor: pointer;
+  }
+  .rv-ico:hover { color: var(--hud-text); border-color: var(--hud-border); }
+  .rv-cols { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; flex: 1; }
+  .rv-col { min-height: 0; overflow-y: auto; padding: 14px 16px; }
+  .rv-col-right { border-left: 1px solid var(--hud-border-soft); }
+  /* 左图上的细框：只描边不填充，编号贴在框左上角 */
+  .rv-box {
+    position: absolute; border: 1px solid var(--hud-border); border-radius: 2px;
+    background: transparent; padding: 0; cursor: pointer;
+  }
+  .rv-box:hover, .rv-box.is-hot { border-color: var(--hud-accent); }
+  /* 编号贴在框**左侧外缘**：放在上方会在密集的截图里压到上一行 */
+  .rv-box > .rv-num {
+    position: absolute; left: 0; top: 50%; transform: translate(-100%, -50%);
+    font-family: var(--hud-mono); font-size: 9.5px; line-height: 1.3;
+    padding: 0 2px; border-radius: 2px 0 0 2px;
+    background: var(--hud-surface); color: var(--hud-faint);
+    border: 1px solid var(--hud-border-soft); border-right: 0;
+  }
+  .rv-box.is-hot > .rv-num { color: var(--hud-accent); border-color: var(--hud-accent); }
+  /* 右栏逐块译文：编号在行首，hover 时左侧出现一条陶土色竖线 */
+  .rv-block {
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 2px 0; margin-bottom: 10px;
+    border-left: 1px solid transparent;
+    cursor: default;
+  }
+  .rv-block > .rv-num {
+    position: static; transform: none; flex: none;
+    font-size: 10px; padding: 0 3px; border-radius: 2px;
+    border: 1px solid var(--hud-border-soft); background: transparent;
+  }
+  .rv-block.is-hot { border-left-color: var(--hud-accent); padding-left: 6px; }
+  .rv-block.is-hot > .rv-num { color: var(--hud-accent); border-color: var(--hud-accent); }
+`;
+
 /**
  * 双栏对照窗口。
  *
@@ -569,95 +626,78 @@ export function ReaderView() {
 
   return (
     <div className="lm-panel flex flex-col text-[var(--hud-text)]">
+      <style>{READER_STYLES}</style>
+
       {/* 只有标题文字可拖拽：整块 header 挂 drag-region 会把按钮的点击吞掉（实测） */}
-      <header className="flex shrink-0 items-center gap-2 border-b border-white/8 px-4 py-2.5">
-        <span data-tauri-drag-region className="text-[13px] font-medium">
+      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--hud-border-soft)] px-3 py-1.5">
+        <span data-tauri-drag-region className="text-[12px]">
           {t("readerTitle")}
         </span>
         {content?.app && (
-          <span className="text-[11px] text-[var(--hud-muted)]">{content.app}</span>
+          <span className="text-[11px] text-[var(--hud-faint)]">{content.app}</span>
         )}
+        <span className="font-mono text-[10.5px] tabular-nums text-[var(--hud-faint)]">
+          {sources.length} {t("readerBlocks")}
+        </span>
+
         {isImage && (
-          <div className="ml-2 flex overflow-hidden rounded-md border border-white/12">
+          <div className="rv-seg ml-1">
             {(["side", "overlay"] as const).map((option) => (
               <button
                 key={option}
                 type="button"
                 onClick={() => setMode(option)}
-                className={`px-2 py-0.5 text-[11px] transition ${
-                  mode === option
-                    ? "bg-[var(--hud-accent)]/20 text-[var(--hud-accent)]"
-                    : "text-[var(--hud-muted)] hover:text-white"
-                }`}
+                className={mode === option ? "is-on" : ""}
               >
                 {option === "side" ? t("readerModeSide") : t("readerModeOverlay")}
               </button>
             ))}
           </div>
         )}
-                {/* 两个入口：原文 / 译文。译文串起来读，跟读高亮按对应文本推进。 */}
-        {speechReady && speakOriginal && (content?.text ?? "").trim().length > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              if (speaking) {
-                stopSpeaking();
-              } else {
-                startSpeaking(content?.text ?? "");
-              }
-            }}
-            className={`ml-2 rounded border px-1.5 py-0.5 text-[11px] transition ${
-              spokenWord !== null
-                ? "border-[var(--hud-accent)] text-[var(--hud-accent)]"
-                : "border-white/12 text-[var(--hud-muted)] hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
-            }`}
-          >
-            {speakingSource === "original" && speaking
-              ? t("speakStop")
-              : t("speakOriginal")}
-          </button>
-        )}
-        {speechReady && speakTranslation && translationText.trim().length > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              if (speakingSource === "translation" && speaking) {
-                stopSpeaking();
-              } else {
-                speakAs("translation", translationText);
-              }
-            }}
-            className={`ml-2 rounded border px-1.5 py-0.5 text-[11px] transition ${
-              speakingSource === "translation" && speaking
-                ? "border-[var(--hud-accent)] text-[var(--hud-accent)]"
-                : "border-white/12 text-[var(--hud-muted)] hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
-            }`}
-          >
-            {speakingSource === "translation" && speaking
-              ? t("speakStop")
-              : t("speakTranslation")}
-          </button>
-        )}
-        <span className="ml-auto text-[11px] text-[var(--hud-muted)]">
-          {sources.length} {t("readerBlocks")}
-        </span>
-        <button
-          type="button"
-          onClick={() => void ipc.closeReader()}
-          aria-label={t("settingsClose")}
-          className="grid size-6 place-items-center rounded-md text-[var(--hud-muted)] transition hover:bg-white/10 hover:text-[var(--hud-text)]"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path
-              d="M2 2 L10 10 M10 2 L2 10"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      </header>
 
+        <div className="ml-auto flex items-center gap-1.5">
+          {speechReady && speakOriginal && (content?.text ?? "").trim().length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (speaking) {
+                  stopSpeaking();
+                } else {
+                  startSpeaking(content?.text ?? "");
+                }
+              }}
+              className={`rv-btn ${speakingSource === "original" && speaking ? "is-on" : ""}`}
+            >
+              {speakingSource === "original" && speaking ? t("speakStop") : t("speakOriginal")}
+            </button>
+          )}
+          {speechReady && speakTranslation && translationText.trim().length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (speakingSource === "translation" && speaking) {
+                  stopSpeaking();
+                } else {
+                  speakAs("translation", translationText);
+                }
+              }}
+              className={`rv-btn ${speakingSource === "translation" && speaking ? "is-on" : ""}`}
+            >
+              {speakingSource === "translation" && speaking
+                ? t("speakStop")
+                : t("speakTranslation")}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void ipc.closeReader()}
+            aria-label={t("settingsClose")}
+            className="rv-ico"
+          >
+            ✕
+          </button>
+        </div>
+      </header>
       {error && <p className="px-4 py-3 text-[12px] text-red-300/80">{error}</p>}
 
       {/* ---------- 覆盖模式：译文贴在原图框上 ---------- */}
@@ -682,10 +722,10 @@ export function ReaderView() {
                 onFocus={() => setHovered(index)}
                 onMouseLeave={() => setHovered(null)}
                 onBlur={() => setHovered(null)}
-                className={`absolute overflow-hidden rounded border px-1 text-left transition ${
+                className={`absolute overflow-hidden rounded-[2px] border px-1 text-left ${
                   hovered === index
-                    ? "z-10 border-[var(--hud-accent)] bg-[var(--hud-surface)]/95"
-                    : "border-white/10 bg-[var(--hud-surface)]/80"
+                    ? "z-10 border-[var(--hud-accent)] bg-[var(--hud-surface)]"
+                    : "border-[var(--hud-border)] bg-[var(--hud-surface)]"
                 }`}
                 style={quadStyle(block)}
               >
@@ -702,7 +742,7 @@ export function ReaderView() {
             {/* 气泡：hover 时在本框上方或下方弹出**完整**译文，位置按剩余空间自动翻 */}
             {hovered !== null && bubble && (
               <div
-                className="pointer-events-none absolute z-20 w-[min(320px,90%)] rounded-lg border border-[var(--hud-accent)]/60 bg-[var(--hud-surface)]/98 px-2 py-1.5 shadow-lg"
+                className="pointer-events-none absolute z-20 w-[min(320px,90%)] rounded-[var(--hud-r-ctl)] border border-[var(--hud-accent)] bg-[var(--hud-surface)] px-2 py-1.5"
                 style={{ left: bubble.left, top: bubble.top }}
               >
                 <p className="text-[12px] leading-[1.5]">{bubble.text}</p>
@@ -715,39 +755,34 @@ export function ReaderView() {
         </div>
       )}
 
-      {/* ---------- 并排模式 ---------- */}
+      {/* ---------- 并排模式：左截图带细框，右编号译文 ---------- */}
       {(!isImage || mode === "side") && (
-        <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-white/8">
+        <div className="rv-cols">
           <div
             ref={leftRef}
             onScroll={() => syncScroll("left")}
-            className="min-h-0 overflow-y-auto px-4 py-3"
+            className="rv-col"
           >
             {isImage && imageSrc ? (
-              <div className="space-y-2">
-                {/* 不放大：放大只会更糊，超过原尺寸没有意义 */}
-                <img
-                  src={imageSrc}
-                  alt=""
-                  className="w-full rounded-lg"
-                  // 小截图放大到 2 倍：框按百分比定位，放大不会错位；
-            // 否则 320px 的截图在 1200px 的窗口里，十几个框会挤成一团。
-            // 用 width 而不是 maxWidth：父容器是 w-fit，maxWidth 撑不大它。
-            style={{ width: content!.image!.width * 2, maxWidth: "100%" }}
-                />
+              <div
+                className="relative mx-auto w-fit pl-[14px]"
+                // 小截图放大到 2 倍：框按百分比定位，放大不会错位
+                style={{ width: content!.image!.width * 2, maxWidth: "100%" }}
+              >
+                <img src={imageSrc} alt="" className="w-full rounded-[var(--hud-r-ctl)]" />
                 {content!.imageBlocks.map((block, index) => (
-                  <p
+                  <button
+                    type="button"
                     key={index}
                     onMouseEnter={() => setHovered(index)}
+                    onFocus={() => setHovered(index)}
                     onMouseLeave={() => setHovered(null)}
-                    className={`rounded px-1 text-[12px] leading-relaxed transition ${
-                      hovered === index
-                        ? "bg-[var(--hud-accent)]/15 text-white"
-                        : "text-[var(--hud-muted)]"
-                    }`}
+                    onBlur={() => setHovered(null)}
+                    className={`rv-box ${hovered === index ? "is-hot" : ""}`}
+                    style={quadStyle(block)}
                   >
-                    {block.text}
-                  </p>
+                    <span className="rv-num">{index + 1}</span>
+                  </button>
                 ))}
               </div>
             ) : (
@@ -756,15 +791,11 @@ export function ReaderView() {
                   .slice(0, index)
                   .reduce(
                     (sum, item) =>
-                      sum +
-                      tokenize(item).filter((token) => token.kind === "word").length,
+                      sum + tokenize(item).filter((token) => token.kind === "word").length,
                     0,
                   );
                 return (
-                  <p
-                    key={index}
-                    className="mb-3 text-[13.5px] leading-[1.75] text-[var(--hud-text)]/90"
-                  >
+                  <p key={index} className="mb-3 text-[13.5px] leading-[1.75]">
                     {renderClickable(block, true, baseWord)}
                   </p>
                 );
@@ -775,24 +806,22 @@ export function ReaderView() {
           <div
             ref={rightRef}
             onScroll={() => syncScroll("right")}
-            className="min-h-0 overflow-y-auto px-4 py-3"
+            className="rv-col rv-col-right"
           >
             {sources.map((_, index) => (
               <div
                 key={index}
                 onMouseEnter={() => setHovered(index)}
                 onMouseLeave={() => setHovered(null)}
-                className={`mb-3 min-h-[1.75em] rounded px-1 transition ${
-                  hovered === index ? "bg-[var(--hud-accent)]/10" : ""
-                }`}
+                className={`rv-block ${hovered === index ? "is-hot" : ""}`}
               >
-                {renderTranslation(index, false)}
+                <span className="rv-num">{index + 1}</span>
+                <div className="min-w-0">{renderTranslation(index, false)}</div>
               </div>
             ))}
           </div>
         </div>
       )}
-
       {current && (
         <footer className="shrink-0 border-t border-white/8 bg-black/20 px-4 py-2">
           <div className="flex items-center gap-2">
