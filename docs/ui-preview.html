@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lemma UI Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg-0: #080b12;
+        --bg-1: #0e1420;
+        --panel: rgba(19, 27, 41, 0.78);
+        --panel-strong: rgba(24, 34, 51, 0.92);
+        --panel-soft: rgba(255, 255, 255, 0.045);
+        --line: rgba(255, 255, 255, 0.1);
+        --line-strong: rgba(255, 255, 255, 0.16);
+        --text: #eff6ff;
+        --muted: #93a4bb;
+        --faint: #61738c;
+        --cyan: #6ee7ff;
+        --cyan-strong: #27c9ed;
+        --violet: #b49cff;
+        --green: #8be7b0;
+        --amber: #f8c96c;
+        --red: #ff8b99;
+        --shadow: 0 28px 70px rgba(0, 0, 0, 0.34), 0 10px 24px rgba(0, 0, 0, 0.22);
+        --radius-window: 22px;
+        --radius-card: 14px;
+        --radius-control: 9px;
+        font-family: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body { min-height: 100%; margin: 0; }
+
+      body {
+        min-width: 1024px;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 12% 0%, rgba(51, 166, 204, 0.16), transparent 30rem),
+          radial-gradient(circle at 92% 7%, rgba(124, 91, 208, 0.16), transparent 28rem),
+          linear-gradient(135deg, var(--bg-0), var(--bg-1) 48%, #0a101a);
+        overflow-x: auto;
+      }
+
+      button, input { font: inherit; }
+      button { color: inherit; }
+
+      .icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.7;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .preview-shell { width: min(1500px, calc(100vw - 72px)); margin: 0 auto; padding: 30px 0 52px; }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        min-height: 58px;
+        padding: 0 4px 18px;
+      }
+
+      .brand { display: flex; align-items: center; gap: 12px; min-width: 200px; }
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(110, 231, 255, 0.5);
+        border-radius: 11px;
+        color: var(--cyan);
+        background: linear-gradient(145deg, rgba(110, 231, 255, 0.18), rgba(180, 156, 255, 0.12));
+        box-shadow: 0 0 26px rgba(110, 231, 255, 0.12);
+      }
+
+      .brand-title { font-size: 16px; font-weight: 700; letter-spacing: 0.03em; }
+      .brand-subtitle { margin-top: 2px; color: var(--muted); font-size: 11px; }
+
+      .view-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        background: rgba(4, 8, 15, 0.46);
+        box-shadow: inset 0 1px rgba(255, 255, 255, 0.04);
+      }
+
+      .view-tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 34px;
+        padding: 0 14px;
+        border: 0;
+        border-radius: 9px;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+        transition: 160ms ease;
+      }
+
+      .view-tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.055); }
+      .view-tab.is-active { color: var(--text); background: linear-gradient(135deg, rgba(110, 231, 255, 0.18), rgba(180, 156, 255, 0.12)); box-shadow: inset 0 0 0 1px rgba(110, 231, 255, 0.23); }
+
+      .topbar-meta { display: flex; align-items: center; gap: 9px; margin-left: auto; color: var(--muted); font-size: 11px; }
+      .status-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--green); box-shadow: 0 0 14px rgba(139, 231, 176, 0.75); }
+
+      .workspace { position: relative; min-height: 790px; }
+      .view-panel { display: none; min-height: 790px; animation: view-in 180ms ease both; }
+      .view-panel.is-active { display: block; }
+      @keyframes view-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+      .window-frame {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius-window);
+        background: linear-gradient(145deg, rgba(28, 40, 60, 0.82), rgba(12, 18, 29, 0.88));
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(22px);
+      }
+
+      .window-frame::before {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        content: "";
+        background: linear-gradient(125deg, rgba(255, 255, 255, 0.09), transparent 26%, transparent 72%, rgba(110, 231, 255, 0.035));
+      }
+
+      .window-head {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 58px;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .window-head-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .window-title { font-size: 14px; font-weight: 650; letter-spacing: 0.015em; }
+      .window-kicker { color: var(--muted); font-size: 11px; }
+      .window-head-actions { display: flex; align-items: center; gap: 7px; margin-left: auto; }
+
+      .ghost-btn, .outline-btn, .primary-btn, .icon-btn, .chip-btn, .seg-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        min-height: 32px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        background: rgba(255, 255, 255, 0.045);
+        cursor: pointer;
+        transition: 160ms ease;
+      }
+
+      .ghost-btn, .outline-btn, .primary-btn { padding: 0 11px; font-size: 11px; }
+      .icon-btn { width: 32px; padding: 0; color: var(--muted); }
+      .ghost-btn { color: var(--muted); border-color: transparent; background: transparent; }
+      .outline-btn { color: var(--muted); }
+      .primary-btn { color: #03131a; border-color: rgba(110, 231, 255, 0.7); background: linear-gradient(135deg, var(--cyan), #9defff); font-weight: 700; }
+      .ghost-btn:hover, .outline-btn:hover, .icon-btn:hover, .chip-btn:hover, .seg-btn:hover { color: var(--text); border-color: rgba(110, 231, 255, 0.42); background: rgba(110, 231, 255, 0.08); }
+      .primary-btn:hover { filter: brightness(1.08); box-shadow: 0 0 18px rgba(110, 231, 255, 0.22); }
+
+      .preview-caption { display: flex; align-items: center; gap: 10px; margin: 0 0 14px 2px; color: var(--muted); font-size: 12px; }
+      .preview-caption strong { color: var(--text); font-size: 13px; }
+      .caption-line { width: 26px; height: 1px; background: linear-gradient(90deg, var(--cyan), transparent); }
+
+      .hud-stage { display: grid; grid-template-columns: minmax(260px, 420px) minmax(360px, 1fr); gap: 24px; align-items: start; }
+      .hud-window { width: min(420px, 100%); min-height: 592px; margin: 18px auto 0; }
+      .hud-window .window-head { padding: 0 16px; }
+      .hud-window .window-head-actions { gap: 2px; }
+
+      .hud-source { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--muted); font-size: 10px; }
+      .source-pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px rgba(110, 231, 255, 0.72); }
+      .latency { margin-left: auto; color: var(--cyan); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+
+      .hud-body { position: relative; display: flex; min-height: 476px; flex-direction: column; padding: 0 16px; }
+      .breadcrumbs { display: flex; align-items: center; gap: 7px; min-height: 38px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 10px; white-space: nowrap; overflow-x: auto; }
+      .breadcrumbs button { border: 0; padding: 0; color: inherit; background: transparent; cursor: pointer; }
+      .breadcrumbs button:hover, .breadcrumbs button.is-active { color: var(--text); }
+      .crumb-arrow { color: var(--faint); }
+
+      .hud-content { flex: 1; padding: 20px 1px 15px; }
+      .state-switcher { display: flex; gap: 6px; margin-bottom: 13px; }
+      .state-switcher button { min-height: 25px; padding: 0 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: rgba(255,255,255,0.035); font-size: 10px; cursor: pointer; }
+      .state-switcher button.is-active { color: var(--cyan); border-color: rgba(110,231,255,0.45); background: rgba(110,231,255,0.1); }
+
+      .hud-state { display: none; }
+      .hud-state.is-active { display: block; animation: view-in 160ms ease both; }
+      .word-line { display: flex; align-items: flex-start; gap: 10px; }
+      .word { margin: 0; font-size: 30px; line-height: 1; letter-spacing: -0.04em; }
+      .word-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+      .tag { display: inline-flex; align-items: center; min-height: 21px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; }
+      .tag.cyan { color: var(--cyan); border-color: rgba(110,231,255,0.33); background: rgba(110,231,255,0.08); }
+      .tag.violet { color: var(--violet); border-color: rgba(180,156,255,0.34); background: rgba(180,156,255,0.08); }
+      .phonetic { margin: 8px 0 0; color: var(--muted); font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .definition { margin: 18px 0 0; font-size: 15px; line-height: 1.55; }
+      .definition + .definition { margin-top: 7px; color: var(--muted); font-size: 12px; }
+      .definition button, .reader-text button { border: 0; border-bottom: 1px dotted rgba(147, 164, 187, 0.6); padding: 0; color: inherit; background: transparent; cursor: pointer; }
+      .definition button:hover, .reader-text button:hover { color: var(--cyan); border-color: var(--cyan); }
+      .exchange { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 18px; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .source-line { margin: 18px 0 0; color: var(--faint); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+      .sentence-original { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+      .translation-main { margin: 16px 0 0; font-size: 18px; line-height: 1.45; letter-spacing: -0.015em; }
+      .translation-state { display: inline-flex; align-items: center; gap: 7px; color: var(--violet); font-size: 12px; }
+      .spinner { width: 12px; height: 12px; border: 1px solid rgba(180,156,255,0.28); border-top-color: var(--violet); border-radius: 999px; animation: spin 0.8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .cache-note { display: inline-flex; gap: 5px; align-items: center; color: var(--green); font-size: 10px; }
+
+      .ocr-summary { padding: 13px; border: 1px solid rgba(110,231,255,0.18); border-radius: var(--radius-card); background: linear-gradient(135deg, rgba(110,231,255,0.1), rgba(180,156,255,0.06)); }
+      .ocr-summary-head { display: flex; align-items: center; gap: 7px; color: var(--cyan); font-size: 11px; }
+      .ocr-summary-text { margin: 12px 0 0; font-size: 17px; line-height: 1.45; }
+      .ocr-summary-sub { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+      .action-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 18px; }
+      .action-row .outline-btn { font-size: 10px; }
+
+      .hud-foot { display: flex; align-items: center; gap: 7px; min-height: 50px; padding: 0 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+      .hint-key { display: inline-flex; align-items: center; min-height: 22px; padding: 0 7px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: rgba(255,255,255,0.045); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+      .hud-foot .hint-copy { margin-left: auto; }
+
+      .hud-notes { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-window); background: rgba(8, 13, 23, 0.38); }
+      .note-title { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 650; }
+      .note-title::before { width: 7px; height: 7px; border-radius: 2px; background: var(--cyan); box-shadow: 0 0 14px rgba(110,231,255,0.5); content: ""; transform: rotate(45deg); }
+      .note-copy { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+      .note-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .note-stat { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-soft); }
+      .note-stat strong { display: block; color: var(--cyan); font: 17px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .note-stat span { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; }
+      .token-row { display: flex; flex-wrap: wrap; gap: 7px; }
+      .token { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: var(--panel-soft); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .token b { color: var(--text); font-weight: 500; }
+
+      .settings-window { min-height: 740px; }
+      .settings-layout { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 680px; }
+      .settings-nav { position: relative; padding: 19px 12px; border-right: 1px solid var(--line); background: rgba(5, 10, 18, 0.25); }
+      .settings-nav-label { padding: 0 10px 9px; color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; }
+      .settings-nav button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 36px; margin: 2px 0; padding: 0 10px; border: 0; border-radius: 9px; color: var(--muted); background: transparent; font-size: 11px; text-align: left; cursor: pointer; }
+      .settings-nav button:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+      .settings-nav button.is-active { color: var(--text); background: linear-gradient(90deg, rgba(110,231,255,0.14), rgba(110,231,255,0.03)); box-shadow: inset 2px 0 var(--cyan); }
+      .settings-nav .nav-icon { width: 14px; color: var(--faint); }
+      .settings-nav button.is-active .nav-icon { color: var(--cyan); }
+      .settings-content { min-width: 0; padding: 24px 28px 30px; overflow: hidden; }
+      .settings-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+      .settings-title h2 { margin: 0; font-size: 21px; letter-spacing: -0.025em; }
+      .settings-title p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+      .settings-title .save-state { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 10px; }
+      .settings-title .save-state::before { width: 6px; height: 6px; border-radius: 999px; background: currentColor; content: ""; }
+      .setting-section { display: none; }
+      .setting-section.is-active { display: block; animation: view-in 160ms ease both; }
+      .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-bottom: 10px; }
+      .section-heading h3 { margin: 0; font-size: 13px; }
+      .section-heading p { margin: 0; color: var(--muted); font-size: 10px; }
+      .setting-card { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025)); }
+      .setting-card + .setting-card { margin-top: 10px; }
+      .choice-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .choice { position: relative; display: grid; gap: 5px; min-height: 74px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; color: var(--muted); background: rgba(0,0,0,0.12); text-align: left; cursor: pointer; }
+      .choice:hover { border-color: rgba(110,231,255,0.34); }
+      .choice.is-selected { color: var(--text); border-color: rgba(110,231,255,0.55); background: linear-gradient(145deg, rgba(110,231,255,0.13), rgba(110,231,255,0.04)); box-shadow: inset 0 0 0 1px rgba(110,231,255,0.08); }
+      .choice-title { font-size: 11px; font-weight: 650; }
+      .choice-copy { color: var(--muted); font-size: 10px; line-height: 1.45; }
+      .choice.is-selected .choice-copy { color: #b8c9db; }
+      .checkmark { position: absolute; top: 10px; right: 10px; width: 15px; height: 15px; border: 1px solid var(--line-strong); border-radius: 50%; }
+      .choice.is-selected .checkmark { border-color: var(--cyan); background: var(--cyan); box-shadow: 0 0 12px rgba(110,231,255,0.36); }
+      .choice.is-selected .checkmark::after { position: absolute; top: 3px; left: 4px; width: 4px; height: 6px; border-right: 1.5px solid #06131a; border-bottom: 1.5px solid #06131a; content: ""; transform: rotate(45deg); }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 15px; min-height: 42px; }
+      .row + .row { border-top: 1px solid var(--line); }
+      .row-label { display: grid; gap: 4px; min-width: 0; }
+      .row-label strong { font-size: 11px; font-weight: 600; }
+      .row-label span { color: var(--muted); font-size: 10px; }
+      .hotkey { display: inline-flex; align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid rgba(110,231,255,0.27); border-radius: 7px; color: var(--cyan); background: rgba(110,231,255,0.08); font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .switch { position: relative; width: 35px; height: 20px; border: 0; border-radius: 999px; background: rgba(255,255,255,0.14); cursor: pointer; }
+      .switch::after { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #8090a5; content: ""; transition: 160ms ease; }
+      .switch.is-on { background: rgba(110,231,255,0.33); }
+      .switch.is-on::after { left: 18px; background: var(--cyan); box-shadow: 0 0 12px rgba(110,231,255,0.5); }
+      .range { width: 170px; accent-color: var(--cyan); }
+      .range-value { min-width: 42px; color: var(--cyan); font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
+      .model-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; min-height: 52px; }
+      .model-row + .model-row { border-top: 1px solid var(--line); }
+      .model-name { display: grid; gap: 4px; }
+      .model-name strong { font-size: 11px; }
+      .model-name span { color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border-radius: 999px; font-size: 10px; }
+      .status::before { width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
+      .status.ready { color: var(--green); background: rgba(139,231,176,0.1); }
+      .status.missing { color: var(--amber); background: rgba(248,201,108,0.1); }
+      .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .metric { padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,0.035); }
+      .metric strong { display: block; color: var(--cyan); font: 18px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .metric span { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; }
+
+      .reader-window { min-height: 740px; }
+      .reader-head .window-kicker { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .reader-toolbar { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+      .segmented { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: rgba(0,0,0,0.18); }
+      .seg-btn { min-height: 26px; padding: 0 9px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font-size: 10px; }
+      .seg-btn.is-active { color: var(--text); background: rgba(110,231,255,0.15); box-shadow: inset 0 0 0 1px rgba(110,231,255,0.21); }
+      .reader-body { position: relative; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 1px; min-height: 620px; background: var(--line); }
+      .reader-pane { min-width: 0; padding: 21px 23px 82px; background: rgba(7, 13, 22, 0.32); overflow: hidden; }
+      .reader-pane + .reader-pane { background: rgba(18, 27, 42, 0.52); }
+      .pane-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; }
+      .pane-label span:last-child { color: var(--faint); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: none; letter-spacing: 0; }
+      .mock-image { position: relative; min-height: 410px; overflow: hidden; border: 1px solid rgba(255,255,255,0.13); border-radius: 14px; background: linear-gradient(145deg, #27374b, #141e2d 40%, #1d2838 70%, #0d1723); }
+      .mock-image::before { position: absolute; inset: 0; background: radial-gradient(circle at 70% 18%, rgba(110,231,255,0.28), transparent 30%), linear-gradient(135deg, transparent 40%, rgba(5,10,18,0.6)); content: ""; }
+      .mock-window-bar { position: absolute; inset: 0 0 auto; display: flex; gap: 5px; align-items: center; height: 30px; padding: 0 11px; background: rgba(6,11,18,0.45); border-bottom: 1px solid rgba(255,255,255,0.12); }
+      .mock-window-bar i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.38); }
+      .mock-image-title { position: absolute; top: 58px; left: 25px; right: 25px; color: #f1f7ff; font-size: 25px; font-weight: 700; letter-spacing: -0.05em; text-shadow: 0 2px 14px rgba(0,0,0,0.35); }
+      .mock-image-copy { position: absolute; top: 104px; left: 26px; right: 28px; color: rgba(239,246,255,0.78); font-size: 12px; line-height: 2; }
+      .ocr-box { position: absolute; border: 1px solid rgba(110,231,255,0.9); border-radius: 4px; background: rgba(110,231,255,0.09); box-shadow: 0 0 0 1px rgba(110,231,255,0.08), 0 0 18px rgba(110,231,255,0.1); cursor: pointer; transition: 160ms ease; }
+      .ocr-box:hover, .ocr-box.is-linked { border-color: #fff; background: rgba(110,231,255,0.2); box-shadow: 0 0 0 1px rgba(255,255,255,0.45), 0 0 24px rgba(110,231,255,0.25); }
+      .box-1 { top: 146px; left: 24px; width: 75%; height: 31px; }
+      .box-2 { top: 206px; left: 24px; width: 63%; height: 28px; }
+      .box-3 { top: 259px; left: 24px; width: 70%; height: 28px; }
+      .box-4 { top: 328px; left: 24px; width: 42%; height: 27px; }
+      .reader-text { display: grid; gap: 12px; }
+      .translation-block { padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,0.035); transition: 160ms ease; }
+      .translation-block:hover, .translation-block.is-linked { border-color: rgba(180,156,255,0.44); background: rgba(180,156,255,0.09); }
+      .translation-block .block-number { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-right: 8px; border-radius: 6px; color: var(--violet); background: rgba(180,156,255,0.13); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .translation-block p { display: inline; margin: 0; font-size: 13px; line-height: 1.65; }
+      .translation-block small { display: block; margin-top: 8px; color: var(--faint); font-size: 10px; line-height: 1.5; }
+      .lookup-panel { position: absolute; right: 22px; bottom: 17px; left: 22px; display: flex; align-items: center; gap: 12px; min-height: 57px; padding: 10px 12px; border: 1px solid rgba(110,231,255,0.25); border-radius: 13px; background: rgba(13, 23, 37, 0.92); box-shadow: 0 12px 34px rgba(0,0,0,0.28); }
+      .lookup-word { display: grid; gap: 2px; min-width: 110px; }
+      .lookup-word strong { font-size: 14px; }
+      .lookup-word span { color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .lookup-copy { min-width: 0; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .lookup-panel .icon-btn { margin-left: auto; }
+
+      .overlay-pane { display: none; position: relative; grid-column: 1 / -1; min-height: 620px; padding: 24px; background: rgba(7,13,22,0.36); }
+      .reader-body.is-overlay { display: block; }
+      .reader-body.is-overlay .reader-pane { display: none; }
+      .reader-body.is-overlay .overlay-pane { display: block; }
+      .overlay-canvas { position: relative; width: min(760px, 100%); height: 515px; margin: 0 auto; overflow: visible; border: 1px solid rgba(255,255,255,0.15); border-radius: 15px; background: linear-gradient(145deg, #27374b, #151f2e 40%, #1b2636 72%, #0d1723); }
+      .overlay-canvas .mock-window-bar { border-radius: 15px 15px 0 0; }
+      .overlay-canvas .mock-image-title { top: 66px; }
+      .overlay-canvas .mock-image-copy { top: 114px; }
+      .overlay-canvas .ocr-box { border-color: rgba(255,255,255,0.23); background: transparent; box-shadow: none; }
+      .overlay-copy { position: absolute; display: flex; align-items: center; min-height: 28px; padding: 4px 8px; border: 1px solid rgba(180,156,255,0.65); border-radius: 7px; color: #f8f6ff; background: rgba(44,33,75,0.9); font-size: 12px; line-height: 1.35; cursor: pointer; transition: 160ms ease; }
+      .overlay-copy:hover, .overlay-copy:focus { z-index: 2; min-width: 220px; color: #fff; border-color: #e8e1ff; background: rgba(52,38,86,0.98); box-shadow: 0 12px 26px rgba(0,0,0,0.3); outline: none; }
+      .overlay-copy:hover::after, .overlay-copy:focus::after { position: absolute; top: calc(100% + 7px); left: 0; width: 250px; padding: 9px; border: 1px solid rgba(180,156,255,0.34); border-radius: 9px; color: var(--muted); background: rgba(13, 18, 31, 0.96); content: attr(data-full); font-size: 10px; line-height: 1.5; }
+      .overlay-1 { top: 164px; left: 44px; width: 68%; }
+      .overlay-2 { top: 224px; left: 44px; width: 53%; }
+      .overlay-3 { top: 277px; left: 44px; width: 61%; }
+      .overlay-4 { top: 347px; left: 44px; width: 35%; }
+
+      .ocr-stage { position: relative; min-height: 740px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-window); background: #060a11; box-shadow: var(--shadow); }
+      .ocr-stage::before { position: absolute; inset: 0; background: radial-gradient(circle at 48% 39%, rgba(55,87,112,0.42), transparent 31%), linear-gradient(135deg, rgba(15,25,39,0.92), rgba(3,7,13,0.96)); content: ""; }
+      .fake-page { position: absolute; top: 80px; left: 11%; width: 78%; height: 565px; border: 1px solid rgba(255,255,255,0.13); border-radius: 10px; background: linear-gradient(140deg, rgba(50,65,84,0.65), rgba(22,31,45,0.75)); opacity: 0.55; transform: rotate(-1.2deg); }
+      .fake-page::before { position: absolute; inset: 60px 11% auto; height: 12px; border-radius: 999px; background: rgba(255,255,255,0.16); box-shadow: 0 34px rgba(255,255,255,0.12), 0 68px rgba(255,255,255,0.12), 0 102px rgba(255,255,255,0.1), 0 174px rgba(255,255,255,0.1), 0 208px rgba(255,255,255,0.08); content: ""; }
+      .ocr-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(3,7,13,0.49); }
+      .region-instruction { position: absolute; top: 25px; left: 50%; display: inline-flex; align-items: center; gap: 9px; min-height: 39px; padding: 0 14px; border: 1px solid rgba(255,255,255,0.16); border-radius: 12px; color: #e4edf8; background: rgba(7,12,21,0.8); box-shadow: 0 10px 26px rgba(0,0,0,0.25); font-size: 11px; transform: translateX(-50%); }
+      .region-instruction .icon { color: var(--cyan); }
+      .selection-box { position: relative; width: min(650px, 64vw); height: 250px; border: 1.5px solid var(--cyan); border-radius: 8px; background: rgba(110,231,255,0.035); box-shadow: 0 0 0 1px rgba(110,231,255,0.25), 0 0 42px rgba(110,231,255,0.16), inset 0 0 42px rgba(110,231,255,0.05); }
+      .selection-box::before { position: absolute; top: -10px; left: 11px; padding: 3px 7px; border: 1px solid rgba(110,231,255,0.46); border-radius: 6px; color: var(--cyan); background: rgba(5,13,21,0.9); content: "650 × 250"; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .corner { position: absolute; width: 17px; height: 17px; border-color: var(--cyan); filter: drop-shadow(0 0 8px rgba(110,231,255,0.8)); }
+      .corner.tl { top: -2px; left: -2px; border-top: 3px solid; border-left: 3px solid; }
+      .corner.tr { top: -2px; right: -2px; border-top: 3px solid; border-right: 3px solid; }
+      .corner.bl { bottom: -2px; left: -2px; border-bottom: 3px solid; border-left: 3px solid; }
+      .corner.br { right: -2px; bottom: -2px; border-right: 3px solid; border-bottom: 3px solid; }
+      .region-toolbar { position: absolute; right: 24px; bottom: 22px; left: 24px; display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.13); border-radius: 14px; background: rgba(7,12,21,0.75); }
+      .region-hint { color: var(--muted); font-size: 10px; }
+      .busy-badge { display: none; position: absolute; top: 50%; left: 50%; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border: 1px solid rgba(180,156,255,0.35); border-radius: 11px; color: #e9e2ff; background: rgba(20, 15, 36, 0.9); transform: translate(-50%, -50%); }
+      .ocr-stage.is-busy .busy-badge { display: inline-flex; }
+      .ocr-stage.is-busy .selection-box { opacity: 0.4; }
+      .ocr-stage.is-busy .region-instruction { opacity: 0.4; }
+
+      [data-hints-hidden="true"] .hint-key,
+      [data-hints-hidden="true"] .hint-copy,
+      [data-hints-hidden="true"] .region-hint { opacity: 0; }
+
+      .hidden { display: none !important; }
+
+      @media (max-width: 1180px) {
+        body { min-width: 960px; }
+        .preview-shell { width: calc(100vw - 38px); }
+        .hud-stage { grid-template-columns: 420px minmax(280px, 1fr); gap: 17px; }
+        .settings-layout { grid-template-columns: 200px minmax(0, 1fr); }
+        .settings-content { padding-right: 21px; padding-left: 21px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="preview-shell" data-hints-hidden="false">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M7 5.5v13M7 5.5c5.6-2.2 10 .6 10 4.2S12.6 16.2 7 18.5"/><path d="M11 8.3c2.4-.4 4.8.4 5.9 1.9"/></svg>
+          </div>
+          <div>
+            <div class="brand-title">Lemma UI Preview</div>
+            <div class="brand-subtitle">高频深度阅读辅助 · 视觉重设计草案</div>
+          </div>
+        </div>
+
+        <nav class="view-tabs" aria-label="预览窗口">
+          <button class="view-tab is-active" data-view="hud" aria-selected="true"><svg class="icon" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>HUD</button>
+          <button class="view-tab" data-view="settings" aria-selected="false"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3.8l1.1 1.9 2.2.5.4 2.2 1.8 1.3-.8 2.1.8 2.1-1.8 1.3-.4 2.2-2.2.5-1.1 1.9-2.1-.7-2.1.7-1.1-1.9-2.2-.5-.4-2.2-1.8-1.3.8-2.1-.8-2.1 1.8-1.3.4-2.2 2.2-.5L9.9 3.8l2.1.7 2.1-.7Z"/><circle cx="12" cy="12" r="2.5"/></svg>设置</button>
+          <button class="view-tab" data-view="reader" aria-selected="false"><svg class="icon" viewBox="0 0 24 24"><path d="M4.5 5.5h6a2 2 0 0 1 2 2v11h-6a2 2 0 0 0-2 2v-15Z"/><path d="M19.5 5.5h-6a2 2 0 0 0-2 2v11h6a2 2 0 0 1 2 2v-15Z"/></svg>双栏</button>
+          <button class="view-tab" data-view="ocr" aria-selected="false"><svg class="icon" viewBox="0 0 24 24"><path d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/><path d="M8 12h8M12 8v8"/></svg>OCR 框选</button>
+        </nav>
+
+        <div class="topbar-meta"><span class="status-dot"></span>静态预览 · v0.1</div>
+      </header>
+
+      <section class="workspace">
+        <section class="view-panel is-active" data-panel="hud">
+          <div class="preview-caption"><span class="caption-line"></span><strong>HUD / 取词浮层</strong><span>瞬态速查，贴近光标，不打断阅读</span></div>
+          <div class="hud-stage">
+            <div class="window-frame hud-window">
+              <header class="window-head">
+                <div class="window-head-main">
+                  <div class="brand-mark" style="width:25px;height:25px;border-radius:8px"><svg class="icon" viewBox="0 0 24 24"><path d="M7 5.5v13M7 5.5c5.6-2.2 10 .6 10 4.2S12.6 16.2 7 18.5"/><path d="M11 8.3c2.4-.4 4.8.4 5.9 1.9"/></svg></div>
+                  <div class="hud-source"><span class="source-pulse"></span><span>Chrome · 选区</span></div>
+                </div>
+                <span class="latency">首帧 16.8ms</span>
+                <div class="window-head-actions"><button class="icon-btn" title="设置"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3.8l1.1 1.9 2.2.5.4 2.2 1.8 1.3-.8 2.1.8 2.1-1.8 1.3-.4 2.2-2.2.5-1.1 1.9-2.1-.7-2.1.7-1.1-1.9-2.2-.5-.4-2.2-1.8-1.3.8-2.1-.8-2.1 1.8-1.3.4-2.2 2.2-.5L9.9 3.8l2.1.7 2.1-.7Z"/><circle cx="12" cy="12" r="2.5"/></svg></button><button class="icon-btn" title="关闭"><svg class="icon" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div>
+              </header>
+              <div class="hud-body">
+                <nav class="breadcrumbs" aria-label="下探路径">
+                  <button class="is-active" data-crumb="0">threshold</button><span class="crumb-arrow">›</span><button data-crumb="1">value</button><span class="crumb-arrow">›</span><button data-crumb="2">constraint</button>
+                </nav>
+                <div class="hud-content">
+                  <div class="state-switcher" aria-label="HUD 状态"><button class="is-active" data-hud-state="word">词卡</button><button data-hud-state="sentence">句卡</button><button data-hud-state="ocr">OCR 结果</button></div>
+
+                  <article class="hud-state is-active" data-state="word">
+                    <div class="word-line"><div><h1 class="word">threshold</h1><p class="phonetic">/ˈθreʃhoʊld/</p></div><div class="word-meta"><span class="tag cyan">名词</span><span class="tag">CET-6</span></div></div>
+                    <p class="definition"><button data-drill-word="boundary">界限；<u>阈值</u>；起点</button></p>
+                    <p class="definition"><button data-drill-word="limit">the point at which something begins to happen</button></p>
+                    <div class="exchange"><span>thresholds</span><span>·</span><span>thresholded</span></div>
+                    <p class="source-line">Chrome · 选区 · 8ms</p>
+                  </article>
+
+                  <article class="hud-state" data-state="sentence">
+                    <div class="translation-state"><span class="spinner"></span>正在翻译 · Google</div>
+                    <p class="translation-main">这个阈值决定了系统何时开始响应。</p>
+                    <p class="sentence-original">This threshold determines when the system begins to respond.</p>
+                    <div class="action-row"><button class="outline-btn speak-btn"><svg class="icon" viewBox="0 0 24 24"><path d="M5 10v4h3l4 3V7l-4 3H5ZM16 9.5a4 4 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/></svg>朗读原文</button><button class="outline-btn speak-btn"><svg class="icon" viewBox="0 0 24 24"><path d="M5 10v4h3l4 3V7l-4 3H5ZM16 9.5a4 4 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/></svg>朗读译文</button></div>
+                  </article>
+
+                  <article class="hud-state" data-state="ocr">
+                    <div class="ocr-summary"><div class="ocr-summary-head"><svg class="icon" viewBox="0 0 24 24"><path d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/><path d="M8 12h8M12 8v8"/></svg>截图识别完成 <span class="cache-note"><span class="status-dot"></span>3 个文本块</span></div><p class="ocr-summary-text">GenP Guides · 抖音精选 · Featured</p><p class="ocr-summary-sub">原图已保留坐标，可以继续逐块对照阅读。</p></div>
+                    <div class="action-row"><button class="outline-btn speak-btn"><svg class="icon" viewBox="0 0 24 24"><path d="M5 10v4h3l4 3V7l-4 3H5ZM16 9.5a4 4 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/></svg>朗读原文</button><button class="outline-btn speak-btn"><svg class="icon" viewBox="0 0 24 24"><path d="M5 10v4h3l4 3V7l-4 3H5ZM16 9.5a4 4 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/></svg>朗读译文</button><button class="primary-btn" data-jump="reader"><svg class="icon" viewBox="0 0 24 24"><path d="M4.5 5.5h6a2 2 0 0 1 2 2v11h-6a2 2 0 0 0-2 2v-15Z"/><path d="M19.5 5.5h-6a2 2 0 0 0-2 2v11h6a2 2 0 0 1 2 2v-15Z"/></svg>双栏</button></div>
+                  </article>
+                </div>
+              </div>
+              <footer class="hud-foot"><span class="hint-key">双击 Ctrl</span><span class="hint-key">Esc</span><span class="hint-copy">托盘图标 → 设置</span></footer>
+            </div>
+
+            <aside class="hud-notes">
+              <div class="note-title">同一套视觉，覆盖三种信息状态</div>
+              <p class="note-copy">词卡强调词条本身；句卡把译文作为主阅读内容；OCR 卡片突出“识别完成”和“双栏”下一步。操作按钮只在对应状态出现，减少噪音。</p>
+              <div class="note-grid"><div class="note-stat"><strong>16.8ms</strong><span>最近首帧</span></div><div class="note-stat"><strong>24</strong><span>最多下探层</span></div><div class="note-stat"><strong>3</strong><span>OCR 文本块</span></div></div>
+              <div class="note-title">视觉令牌</div>
+              <div class="token-row"><span class="token"><b>accent</b> #6EE7FF</span><span class="token"><b>surface</b> rgba(19,27,41,.78)</span><span class="token"><b>radius</b> 14px / 22px</span><span class="token"><b>shadow</b> 0 28px 70px</span></div>
+              <div class="note-title">可交互状态</div>
+              <p class="note-copy">点击词义里的虚线词会模拟下探；切换上方状态可以查看句卡和 OCR 结果；朗读按钮会短暂进入 loading 状态。</p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view-panel" data-panel="settings">
+          <div class="preview-caption"><span class="caption-line"></span><strong>设置 / Preferences</strong><span>把长列表变成可扫描的工作台</span></div>
+          <div class="window-frame settings-window">
+            <header class="window-head"><div class="window-head-main"><div class="brand-mark" style="width:25px;height:25px;border-radius:8px"><svg class="icon" viewBox="0 0 24 24"><path d="M7 5.5v13M7 5.5c5.6-2.2 10 .6 10 4.2S12.6 16.2 7 18.5"/><path d="M11 8.3c2.4-.4 4.8.4 5.9 1.9"/></svg></div><div><div class="window-title">Lemma · 设置</div><div class="window-kicker">所有改动会立即同步到 HUD</div></div></div><div class="window-head-actions"><span class="save-state">已保存</span><button class="icon-btn" title="关闭"><svg class="icon" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div></header>
+            <div class="settings-layout">
+              <nav class="settings-nav" aria-label="设置分类"><div class="settings-nav-label">Settings</div><button class="is-active" data-settings-section="trigger"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M12 4v16M6 8h12M8 16h8"/></svg>呼出方式</button><button data-settings-section="capture"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h8"/></svg>取词模式</button><button data-settings-section="models"><svg class="icon nav-icon" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5"/></svg>本地模型</button><button data-settings-section="speech"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M5 10v4h3l4 3V7l-4 3H5ZM16 9.5a4 4 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/></svg>朗读</button><button data-settings-section="ocr"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/></svg>截图识别</button><button data-settings-section="reader"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M4.5 5.5h6a2 2 0 0 1 2 2v11h-6a2 2 0 0 0-2 2v-15Z"/><path d="M19.5 5.5h-6a2 2 0 0 0-2 2v11h6a2 2 0 0 1 2 2v-15Z"/></svg>截图对照</button><button data-settings-section="translate"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M5 6h8M9 4v2c0 5-2 8-5 10M7 12c2 2 4 3 7 4M14 17l3-8 3 8M15.2 14h3.6"/></svg>翻译</button><button data-settings-section="card"><svg class="icon nav-icon" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="3"/><path d="M8 8h8M8 12h6M8 16h4"/></svg>卡片显示</button><button data-settings-section="looks"><svg class="icon nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.2-1.6l1.4-1.1-2-3.4-1.7.7A7 7 0 0 0 15 5l-.2-1.8h-4L10.5 5a7 7 0 0 0-1.5.9l-1.7-.7-2 3.4 1.4 1.1A7 7 0 0 0 6.5 12c0 .6.1 1.1.2 1.6l-1.4 1.1 2 3.4 1.7-.7c.5.4 1 .7 1.5.9l.2 1.8h4l.2-1.8a7 7 0 0 0 1.5-.9l1.7.7 2-3.4-1.4-1.1c.2-.5.3-1 .3-1.6Z"/></svg>界面</button><button data-settings-section="perf"><svg class="icon nav-icon" viewBox="0 0 24 24"><path d="M5 19V9M12 19V5M19 19v-7"/></svg>性能</button></nav>
+              <main class="settings-content">
+                <div class="settings-title"><div><h2>呼出方式</h2><p>选择你在阅读过程中最自然的触发方式。</p></div><span class="save-state">已保存</span></div>
+
+                <section class="setting-section is-active" data-settings-panel="trigger"><div class="section-heading"><h3>触发方式</h3><p>默认推荐双击 Ctrl</p></div><div class="setting-card"><div class="choice-grid"><button class="choice is-selected" data-choice-group="trigger"><span class="choice-title">双击 Ctrl</span><span class="choice-copy">不占用组合键，也不和输入法冲突。</span><span class="checkmark"></span></button><button class="choice" data-choice-group="trigger"><span class="choice-title">自定义热键</span><span class="choice-copy">至少包含 Ctrl / Alt 之一。</span><span class="checkmark"></span></button><button class="choice" data-choice-group="trigger"><span class="choice-title">录制新热键</span><span class="choice-copy">点击后按下你的组合键。</span><span class="checkmark"></span></button></div><div class="row" style="margin-top:12px"><div class="row-label"><strong>当前热键</strong><span>仅在自定义热键模式下生效</span></div><span class="hotkey">Alt + Q</span><button class="outline-btn">点击录制</button></div></div></section>
+
+                <section class="setting-section" data-settings-panel="capture"><div class="section-heading"><h3>取词模式</h3><p>按应用类型选择最稳定的来源</p></div><div class="setting-card"><div class="choice-grid"><button class="choice is-selected" data-choice-group="capture"><span class="choice-title">自动</span><span class="choice-copy">选区优先，其次读取光标词。</span><span class="checkmark"></span></button><button class="choice" data-choice-group="capture"><span class="choice-title">只用选区</span><span class="choice-copy">浏览器里最快，也最稳定。</span><span class="checkmark"></span></button><button class="choice" data-choice-group="capture"><span class="choice-title">只用光标词</span><span class="choice-copy">适合原生应用悬停即查。</span><span class="checkmark"></span></button></div></div></section>
+
+                <section class="setting-section" data-settings-panel="models"><div class="section-heading"><h3>本地模型</h3><p>模型文件保存在应用数据目录</p></div><div class="setting-card"><div class="model-row"><div class="model-name"><strong>OCR 模型</strong><span>%APPDATA%\\dev.lunar.lemma\\ocr-models</span></div><span class="status ready">已安装</span><button class="outline-btn">打开目录</button></div><div class="model-row"><div class="model-name"><strong>TTS 模型</strong><span>%APPDATA%\\dev.lunar.lemma\\tts-models</span></div><span class="status missing">未安装</span><button class="outline-btn">打开目录</button></div></div></section>
+
+                <section class="setting-section" data-settings-panel="speech"><div class="section-heading"><h3>朗读</h3><p>原文和译文分别控制</p></div><div class="setting-card"><div class="row"><div class="row-label"><strong>语速</strong><span>1.0× 为原速</span></div><input class="range" type="range" min="0.6" max="1.4" step="0.05" value="1" /><span class="range-value">1.00×</span></div><div class="row"><div class="row-label"><strong>显示“朗读原文”</strong><span>在句卡和双栏工具栏显示</span></div><button class="switch is-on" aria-label="朗读原文"></button></div><div class="row"><div class="row-label"><strong>显示“朗读译文”</strong><span>中文译文单独播放</span></div><button class="switch is-on" aria-label="朗读译文"></button></div></div></section>
+
+                <section class="setting-section" data-settings-panel="ocr"><div class="section-heading"><h3>截图识别</h3><p>使用 Alt + S 框选屏幕区域</p></div><div class="setting-card"><div class="row"><div class="row-label"><strong>启用截图热键</strong><span>关闭后只能从托盘菜单触发</span></div><button class="switch is-on" aria-label="截图热键"></button></div><div class="row"><div class="row-label"><strong>截图热键</strong><span>注册失败时自动降级为托盘</span></div><span class="hotkey">Alt + S</span><button class="outline-btn">点击录制</button></div></div></section>
+
+                <section class="setting-section" data-settings-panel="reader"><div class="section-heading"><h3>截图对照</h3><p>只对 OCR 结果开放双栏入口</p></div><div class="setting-card"><div class="choice-grid" style="grid-template-columns:repeat(2,1fr)"><button class="choice" data-choice-group="reader"><span class="choice-title">关闭</span><span class="choice-copy">截图卡片不显示“双栏”。</span><span class="checkmark"></span></button><button class="choice is-selected" data-choice-group="reader"><span class="choice-title">显示双栏入口</span><span class="choice-copy">在截图结果上继续逐块对照。</span><span class="checkmark"></span></button></div></div></section>
+
+                <section class="setting-section" data-settings-panel="translate"><div class="section-heading"><h3>翻译</h3><p>单词优先走本地词库</p></div><div class="setting-card"><div class="choice-grid" style="grid-template-columns:repeat(2,1fr)"><button class="choice is-selected" data-choice-group="provider"><span class="choice-title">免密在线 · Google</span><span class="choice-copy">零配置，句子约 1 秒。</span><span class="checkmark"></span></button><button class="choice" data-choice-group="provider"><span class="choice-title">OpenAI 兼容接口</span><span class="choice-copy">质量更好，需要 API Key。</span><span class="checkmark"></span></button></div><div class="row" style="margin-top:12px"><div class="row-label"><strong>译成</strong><span>目标语言</span></div><div class="segmented"><button class="seg-btn is-active">中文</button><button class="seg-btn">英文</button></div></div></div></section>
+
+                <section class="setting-section" data-settings-panel="card"><div class="section-heading"><h3>卡片显示</h3><p>控制 HUD 的信息密度</p></div><div class="setting-card"><div class="token-row"><button class="chip-btn" style="padding:0 10px;min-height:30px;color:var(--cyan);border-color:rgba(110,231,255,.4);background:rgba(110,231,255,.08)">音标</button><button class="chip-btn" style="padding:0 10px;min-height:30px;color:var(--cyan);border-color:rgba(110,231,255,.4);background:rgba(110,231,255,.08)">中文释义</button><button class="chip-btn" style="padding:0 10px;min-height:30px;color:var(--muted)">英文释义</button><button class="chip-btn" style="padding:0 10px;min-height:30px;color:var(--cyan);border-color:rgba(110,231,255,.4);background:rgba(110,231,255,.08)">标签</button><button class="chip-btn" style="padding:0 10px;min-height:30px;color:var(--muted)">词形变化</button></div><div class="row" style="margin-top:12px"><div class="row-label"><strong>HUD 最大高度</strong><span>内容会自适应，超出后滚动</span></div><input class="range" type="range" min="160" max="720" value="480" /><span class="range-value">480px</span></div></div></section>
+
+                <section class="setting-section" data-settings-panel="looks"><div class="section-heading"><h3>界面</h3><p>让常用提示保持在视线边缘</p></div><div class="setting-card"><div class="row"><div class="row-label"><strong>显示快捷键提示</strong><span>影响 HUD、双栏词条和框选层</span></div><button class="switch is-on" id="hint-switch" aria-label="显示快捷键提示"></button></div></div></section>
+
+                <section class="setting-section" data-settings-panel="perf"><div class="section-heading"><h3>性能</h3><p>最近一次运行数据</p></div><div class="metrics"><div class="metric"><strong>549ms</strong><span>冷启动到托盘</span></div><div class="metric"><strong>42</strong><span>累计呼出次数</span></div><div class="metric"><strong>16.8ms</strong><span>最近首帧</span></div></div></section>
+              </main>
+            </div>
+          </div>
+        </section>
+
+        <section class="view-panel" data-panel="reader">
+          <div class="preview-caption"><span class="caption-line"></span><strong>双栏 / Screenshot Reader</strong><span>原图和译文在同一个阅读上下文中对齐</span></div>
+          <div class="window-frame reader-window">
+            <header class="window-head reader-head"><div class="window-head-main"><div class="brand-mark" style="width:25px;height:25px;border-radius:8px"><svg class="icon" viewBox="0 0 24 24"><path d="M7 5.5v13M7 5.5c5.6-2.2 10 .6 10 4.2S12.6 16.2 7 18.5"/><path d="M11 8.3c2.4-.4 4.8.4 5.9 1.9"/></svg></div><div><div class="window-title">截图对照</div><div class="window-kicker">Chrome · OCR · 3 个文本块</div></div></div><div class="reader-toolbar"><button class="outline-btn speak-btn"><svg class="icon" viewBox="0 0 24 24"><path d="M5 10v4h3l4 3V7l-4 3H5ZM16 9.5a4 4 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/></svg>朗读原文</button><button class="outline-btn speak-btn"><svg class="icon" viewBox="0 0 24 24"><path d="M5 10v4h3l4 3V7l-4 3H5ZM16 9.5a4 4 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/></svg>朗读译文</button><div class="segmented" aria-label="双栏模式"><button class="seg-btn is-active" data-reader-mode="side">并排</button><button class="seg-btn" data-reader-mode="overlay">覆盖</button></div><button class="icon-btn" title="关闭"><svg class="icon" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div></header>
+            <div class="reader-body" id="reader-body">
+              <div class="reader-pane"><div class="pane-label"><span>原图 / OCR</span><span>900 × 520</span></div><div class="mock-image"><div class="mock-window-bar"><i></i><i></i><i></i></div><div class="mock-image-title">GenP Guides</div><div class="mock-image-copy">A compact guide for reading, translating<br />and keeping context while you work.</div><div class="ocr-box box-1" data-link="1"></div><div class="ocr-box box-2" data-link="2"></div><div class="ocr-box box-3" data-link="3"></div><div class="ocr-box box-4" data-link="4"></div></div></div>
+              <div class="reader-pane"><div class="pane-label"><span>译文</span><span>Google · 缓存</span></div><div class="reader-text"><div class="translation-block" data-link="1"><span class="block-number">01</span><p>GenP 指南</p><small>原文：GenP Guides</small></div><div class="translation-block" data-link="2"><span class="block-number">02</span><p>一份简洁的阅读与翻译指南。</p><small>原文：A compact guide for reading and translating</small></div><div class="translation-block" data-link="3"><span class="block-number">03</span><p>在工作时保留上下文。</p><small>原文：and keeping context while you work.</small></div><div class="translation-block" data-link="4"><span class="block-number">04</span><p><button data-drill-word="featured">精选</button></p><small>点击词语可以在底部查看词条。</small></div></div></div>
+              <div class="overlay-pane"><div class="pane-label"><span>覆盖译文</span><span>hover 查看完整译文</span></div><div class="overlay-canvas"><div class="mock-window-bar"><i></i><i></i><i></i></div><div class="mock-image-title">GenP Guides</div><div class="mock-image-copy">A compact guide for reading, translating<br />and keeping context while you work.</div><div class="ocr-box box-1"></div><div class="ocr-box box-2"></div><div class="ocr-box box-3"></div><div class="ocr-box box-4"></div><button class="overlay-copy overlay-1" data-full="GenP Guides">GenP 指南</button><button class="overlay-copy overlay-2" data-full="A compact guide for reading and translating">一份简洁的阅读与翻译指南。</button><button class="overlay-copy overlay-3" data-full="and keeping context while you work.">在工作时保留上下文。</button><button class="overlay-copy overlay-4" data-full="Featured">精选</button></div></div>
+              <div class="lookup-panel"><div class="lookup-word"><strong>featured</strong><span>/ˈfiːtʃərd/ · 形容词</span></div><div class="lookup-copy">精选的；受关注的 · 词条面板保持单条，点击下一个词会直接替换</div><button class="icon-btn" title="关闭词条"><svg class="icon" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view-panel" data-panel="ocr">
+          <div class="preview-caption"><span class="caption-line"></span><strong>OCR / 框选层</strong><span>按住拖拽，框出需要识别的屏幕区域</span></div>
+          <div class="ocr-stage" id="ocr-stage">
+            <div class="fake-page"></div>
+            <div class="ocr-overlay"><div class="region-instruction"><svg class="icon" viewBox="0 0 24 24"><path d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/><path d="M8 12h8M12 8v8"/></svg>拖出矩形开始识别</div><div class="selection-box"><span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span></div><div class="busy-badge"><span class="spinner"></span>识别中…</div></div>
+            <div class="region-toolbar"><span class="region-hint">Esc 或右键取消</span><button class="outline-btn" id="ocr-busy-toggle"><svg class="icon" viewBox="0 0 24 24"><path d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/><path d="M8 12h8M12 8v8"/></svg>模拟识别中</button></div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const root = document.querySelector(".preview-shell");
+
+      function activateView(view) {
+        document.querySelectorAll(".view-tab").forEach((tab) => {
+          const active = tab.dataset.view === view;
+          tab.classList.toggle("is-active", active);
+          tab.setAttribute("aria-selected", String(active));
+        });
+        document.querySelectorAll(".view-panel").forEach((panel) => {
+          panel.classList.toggle("is-active", panel.dataset.panel === view);
+        });
+      }
+
+      document.querySelectorAll(".view-tab").forEach((tab) => {
+        tab.addEventListener("click", () => activateView(tab.dataset.view));
+      });
+
+      document.querySelectorAll("[data-jump]").forEach((button) => {
+        button.addEventListener("click", () => activateView(button.dataset.jump));
+      });
+
+      document.querySelectorAll("[data-hud-state]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const state = button.dataset.hudState;
+          document.querySelectorAll("[data-hud-state]").forEach((item) => item.classList.toggle("is-active", item === button));
+          document.querySelectorAll("[data-state]").forEach((item) => item.classList.toggle("is-active", item.dataset.state === state));
+        });
+      });
+
+      document.querySelectorAll("[data-crumb]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = Number(button.dataset.crumb);
+          document.querySelectorAll("[data-crumb]").forEach((item) => item.classList.toggle("is-active", Number(item.dataset.crumb) === index));
+        });
+      });
+
+      document.querySelectorAll("[data-drill-word]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const word = button.dataset.drillWord;
+          const crumb = document.querySelector('[data-crumb="2"]');
+          if (crumb) crumb.textContent = word;
+          document.querySelectorAll("[data-crumb]").forEach((item) => item.classList.toggle("is-active", item === crumb));
+        });
+      });
+
+      document.querySelectorAll(".speak-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (button.dataset.busy === "true") return;
+          const original = button.innerHTML;
+          button.dataset.busy = "true";
+          button.innerHTML = '<span class="spinner"></span>合成中…';
+          window.setTimeout(() => {
+            button.innerHTML = original;
+            button.dataset.busy = "false";
+          }, 1000);
+        });
+      });
+
+      document.querySelectorAll("[data-settings-section]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const section = button.dataset.settingsSection;
+          document.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button));
+          document.querySelectorAll("[data-settings-panel]").forEach((panel) => panel.classList.toggle("is-active", panel.dataset.settingsPanel === section));
+          const title = button.textContent.trim();
+          const heading = document.querySelector(".settings-title h2");
+          if (heading) heading.textContent = title;
+        });
+      });
+
+      document.querySelectorAll("[data-choice-group]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const group = button.dataset.choiceGroup;
+          document.querySelectorAll(`[data-choice-group="${group}"]`).forEach((item) => item.classList.toggle("is-selected", item === button));
+        });
+      });
+
+      document.querySelectorAll(".switch").forEach((button) => {
+        button.addEventListener("click", () => {
+          button.classList.toggle("is-on");
+          if (button.id === "hint-switch") {
+            root.dataset.hintsHidden = String(!button.classList.contains("is-on"));
+          }
+        });
+      });
+
+      document.querySelectorAll(".range").forEach((range) => {
+        range.addEventListener("input", () => {
+          const value = Number(range.value);
+          const output = range.parentElement?.querySelector(".range-value");
+          if (output) output.textContent = range.max === "1.4" ? `${value.toFixed(2)}×` : `${value}px`;
+        });
+      });
+
+      document.querySelectorAll("[data-reader-mode]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const mode = button.dataset.readerMode;
+          document.querySelectorAll("[data-reader-mode]").forEach((item) => item.classList.toggle("is-active", item === button));
+          document.querySelector("#reader-body")?.classList.toggle("is-overlay", mode === "overlay");
+        });
+      });
+
+      document.querySelectorAll("[data-link]").forEach((item) => {
+        item.addEventListener("mouseenter", () => {
+          const link = item.dataset.link;
+          document.querySelectorAll(`[data-link="${link}"]`).forEach((target) => target.classList.add("is-linked"));
+        });
+        item.addEventListener("mouseleave", () => {
+          const link = item.dataset.link;
+          document.querySelectorAll(`[data-link="${link}"]`).forEach((target) => target.classList.remove("is-linked"));
+        });
+      });
+
+      document.querySelector("#ocr-busy-toggle")?.addEventListener("click", () => {
+        const stage = document.querySelector("#ocr-stage");
+        stage?.classList.toggle("is-busy");
+      });
+
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "1") activateView("hud");
+        if (event.key === "2") activateView("settings");
+        if (event.key === "3") activateView("reader");
+        if (event.key === "4") activateView("ocr");
+        if (event.key === "Escape") document.querySelector("#ocr-stage")?.classList.remove("is-busy");
+      });
+    </script>
+  </body>
+</html>

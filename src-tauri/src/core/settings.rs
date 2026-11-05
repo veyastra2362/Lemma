@@ -35,6 +35,16 @@ pub enum CaptureMode {
     HoverOnly,
 }
 
+/// 强调色。整套 UI 只有一个强调色，这里只换它的取值。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Accent {
+    /// 陶土橙（默认）。暖、有人味，和暖白正文在一起像旧纸页。
+    Clay,
+    /// 暗橄榄绿。更安静，和石墨底几乎不冲突。
+    Olive,
+}
+
 /// 双栏阅读窗口的打开方式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,6 +116,9 @@ pub struct Settings {
     /// 朗读语速（Kokoro 的 speed 参数，1.0 为原速）。
     #[serde(default = "default_speech_speed")]
     pub speech_speed: f32,
+    /// 强调色。
+    #[serde(default = "default_accent")]
+    pub accent: Accent,
     /// 卡片上是否显示「朗读原文」。
     #[serde(default = "default_true")]
     pub speak_original: bool,
@@ -119,7 +132,6 @@ pub struct Settings {
     pub ocr_hotkey_enabled: bool,
     #[serde(default = "default_ocr_hotkey")]
     pub ocr_hotkey: String,
-    /// 双栏阅读窗口的打开方式。
     #[serde(default = "default_reader_mode")]
     pub reader_open_mode: ReaderOpenMode,
     #[serde(default = "default_reader_hotkey")]
@@ -156,6 +168,10 @@ fn default_true() -> bool {
 
 fn default_provider() -> ProviderKind {
     ProviderKind::Google
+}
+
+fn default_accent() -> Accent {
+    Accent::Clay
 }
 
 fn default_reader_mode() -> ReaderOpenMode {
@@ -196,6 +212,7 @@ impl Default for Settings {
             hud_max_height: default_hud_max_height(),
             show_hints: true,
             speech_speed: default_speech_speed(),
+            accent: default_accent(),
             speak_original: true,
             speak_translation: true,
             ocr_hotkey_enabled: true,

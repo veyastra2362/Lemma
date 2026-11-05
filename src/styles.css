@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
-/* 三个窗口都是透明窗口，根节点不能有底色，否则会出现黑色圆角。 */
+/*
+  三个窗口都是透明窗口，根节点不能有底色，否则会出现黑色圆角。
+*/
 html,
 body,
 #root {
@@ -9,7 +11,7 @@ body,
   background: transparent;
   overflow: hidden;
   font-family:
-    "Microsoft YaHei UI", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", system-ui,
     -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   color-scheme: dark;
@@ -21,12 +23,65 @@ body {
   cursor: default;
 }
 
+/*
+  设计令牌（UI v2）。
+
+  原则见 `docs/ui-redesign-prompts.md`：石墨三层 + 暖白正文 + **唯一一个低饱和强调色**。
+  禁止渐变、发光、玻璃拟态与大面积模糊，所以这里的颜色全是**实色**。
+
+  命名仍沿用 `--hud-*`：它是既有组件的色彩接口，改名会把所有组件一起拖进来，
+  而这次是"一个窗口一个窗口地改"，接口名保持不变能让每一步都可单独构建与回滚。
+*/
 :root {
-  --hud-surface: oklch(0.21 0.014 265 / 96%);
-  --hud-border: oklch(1 0 0 / 10%);
-  --hud-text: oklch(0.97 0.004 265);
-  --hud-muted: oklch(0.72 0.012 265);
-  --hud-accent: oklch(0.78 0.13 200);
+  /* 石墨三层：底 / 面板 / 抬起 */
+  --hud-canvas: #171716;
+  --hud-surface: #242321;
+  --hud-raised: #2d2b28;
+
+  /* 边框：普通 / 更淡（用于行与行之间） */
+  --hud-border: #46423d;
+  --hud-border-soft: #35322e;
+
+  /* 文字：正文暖白 / 次要 / 最弱 */
+  --hud-text: #eeeae1;
+  --hud-muted: #aaa49a;
+  --hud-faint: #777168;
+
+  /* 强调色（默认陶土）；只用于当前项、选中边、关键操作、链接 */
+  --hud-accent: #bd7454;
+  --hud-accent-soft: #3c2d27;
+
+  /* 语义色：只出现在状态点与模型状态文字上 */
+  --hud-ok: #8c9c7d;
+  --hud-warn: #c4a36b;
+  --hud-err: #b86b67;
+
+  /* 圆角：窗口 12 / 面板 8 / 控件 6 */
+  --hud-r-win: 12px;
+  --hud-r-panel: 8px;
+  --hud-r-ctl: 6px;
+
+  /* 字号下限 11px，正文 12.5–14px */
+  --hud-fs-word: 19px;
+  --hud-fs-body: 12.5px;
+  --hud-fs-meta: 11px;
+
+  --hud-ease: ease-out;
+  --hud-t: 120ms;
+}
+
+/* 暗橄榄绿：更安静，与石墨底几乎不冲突 */
+:root[data-accent="olive"] {
+  --hud-accent: #98a67d;
+  --hud-accent-soft: #2e3327;
+}
+
+/* 词头用的衬线体：只用于词条标题与引用，不用于正文 */
+:root {
+  --hud-serif:
+    "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    "Source Han Serif SC", serif;
+  --hud-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 
 ::-webkit-scrollbar {
@@ -34,6 +89,31 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: oklch(1 0 0 / 14%);
-  border-radius: 999px;
+  background: #3a3733;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4a4640;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 统一控件的过渡节奏：只过渡颜色与描边，不做缩放/位移。 */
+button,
+input,
+select {
+  transition:
+    color var(--hud-t) var(--hud-ease),
+    background-color var(--hud-t) var(--hud-ease),
+    border-color var(--hud-t) var(--hud-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }

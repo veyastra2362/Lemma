@@ -33,6 +33,9 @@ export type TranslateProvider = "google" | "openAi";
 /** 目标语言。 */
 export type TranslateLang = "zh" | "en";
 
+/** 强调色。 */
+export type Accent = "clay" | "olive";
+
 /** 双栏窗口的打开方式。 */
 export type ReaderOpenMode = "off" | "hud" | "hotkey";
 
@@ -92,6 +95,8 @@ export interface Settings {
   cardSections: CardSections;
   /** 翻译走哪个服务。 */
   speechSpeed: number;
+  /** 强调色（整套 UI 只有一个）。 */
+  accent: Accent;
   /** 卡片上是否显示「朗读原文」。 */
   speakOriginal: boolean;
   /** 卡片上是否显示「朗读译文」。 */

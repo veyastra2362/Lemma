@@ -624,6 +624,45 @@ export function SettingsView() {
           </div>
         </section>
 
+        {/* ---- 配色 ---- */}
+        <section className="mt-5">
+          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
+            {t("settingsSectionAccent")}
+          </h2>
+          <div className="flex gap-1.5">
+            {[
+              { value: "clay" as const, label: t("settingsAccentClay") },
+              { value: "olive" as const, label: t("settingsAccentOlive") },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  apply({ accent: option.value });
+                }}
+                className={`flex-1 rounded-[var(--hud-r-ctl)] border px-3 py-2 text-left text-[12px] ${
+                  settings?.accent === option.value
+                    ? "border-[var(--hud-accent)] bg-[var(--hud-raised)]"
+                    : "border-[var(--hud-border-soft)] hover:border-[var(--hud-border)]"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full border"
+                    style={{
+                      backgroundColor:
+                        option.value === "clay" ? "#bd7454" : "#98a67d",
+                      borderColor: "var(--hud-border)",
+                    }}
+                  />
+                  {option.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
         {/* ---- HUD 最大高度 ---- */}
         <section className="mt-5">
           <h2 className="mb-2 flex items-center gap-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">

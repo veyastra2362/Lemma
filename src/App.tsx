@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 
 import { ipc, isTauri } from "./lib/ipc";
@@ -20,6 +21,30 @@ export default function App() {
         });
     }
   }, [route]);
+
+  // 强调色是**全局**令牌：四个窗口各自是独立 webview，所以每个窗口都要自己应用一次，
+  // 并在设置变更时跟随（Rust 侧 update_settings 会广播 settings://changed）。
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+    const apply = (accent: string) => {
+      document.documentElement.dataset.accent = accent === "olive" ? "olive" : "clay";
+    };
+    void ipc
+      .getSettings()
+      .then((value) => apply(value.accent))
+      .catch(() => apply("clay"));
+    let unlisten: (() => void) | undefined;
+    void listen<{ accent?: string }>("settings://changed", (event) => {
+      apply(event.payload?.accent ?? "clay");
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => undefined);
+    return () => unlisten?.();
+  }, []);
 
   switch (route) {
     case "settings":
