@@ -11,6 +11,8 @@ const zhCN = {
   hudEmptyBody: "先选中一段文字（或把光标停在一个词上）再双击 Ctrl。",
   hudCapturePlaceholder: "没取到文本：先选中文字，或把光标停在一个词上，再双击 Ctrl。",
   hudHintEscape: "Esc 关闭",
+  hudHintEscapeShort: "关闭",
+  hudHintTrigger: "呼出 / 收起",
   hudHintSettings: "托盘图标 → 设置",
   hudTriggerDoubleControl: "双击 Ctrl 呼出 / 收起",
   hudTriggerHotkeySuffix: "呼出 / 收起",

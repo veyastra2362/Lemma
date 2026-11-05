@@ -20,21 +20,53 @@ const MIN_HEIGHT_PX = 148;
 /** 只挂最近几张卡片到 DOM——这是「物理挂载深度限制」的前端部分。 */
 const MAX_MOUNTED_CARDS = 3;
 
-function Hint({ label }: { label: string }) {
-  return (
-    <span className="rounded-md border border-white/10 px-1.5 py-0.5 text-[11px] text-[var(--hud-muted)]">
-      {label}
-    </span>
-  );
-}
-
-function triggerLabel(settings: Settings | null): string {
-  if (!settings) {
-    return t("hudTriggerUnavailable");
+/** 复用的小控件样式（写在组件外，避免每处重复一长串 class）。 */
+const HUD_CTL_STYLES = `
+  .hud-btn {
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 8px;
+    border: 1px solid var(--hud-border);
+    border-radius: var(--hud-r-ctl);
+    background: transparent;
+    color: var(--hud-muted);
+    cursor: pointer;
   }
-  return settings.trigger === "doubleControl"
-    ? t("hudTriggerDoubleControl")
-    : `${settings.hotkey} ${t("hudTriggerHotkeySuffix")}`;
+  .hud-btn:hover { color: var(--hud-text); border-color: var(--hud-muted); }
+  .hud-ico {
+    font: inherit;
+    font-size: 11px;
+    line-height: 1;
+    width: 19px;
+    height: 19px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: var(--hud-r-ctl);
+    background: transparent;
+    color: var(--hud-faint);
+    cursor: pointer;
+  }
+  .hud-ico:hover { color: var(--hud-text); border-color: var(--hud-border); }
+  .hud-key {
+    font-family: var(--hud-mono);
+    font-size: 10.5px;
+    line-height: 1.5;
+    padding: 0 5px;
+    border: 1px solid var(--hud-border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    color: var(--hud-muted);
+    background: var(--hud-raised);
+  }
+`;
+
+/** 触发方式的键帽文案（底部提示用，短）。 */
+function triggerKeyLabel(settings: Settings | null): string {
+  if (!settings) {
+    return "Ctrl";
+  }
+  return settings.trigger === "doubleControl" ? "Ctrl Ctrl" : settings.hotkey;
 }
 
 /** 释义里可点的词。悬停下划虚线，让"能点"这件事一眼可见。 */
@@ -53,7 +85,7 @@ function WordLinks({
             type="button"
             key={`${index}-${token.value}`}
             onClick={() => onWord(token.value)}
-            className="rounded-sm underline decoration-dotted decoration-white/25 underline-offset-2 hover:bg-white/10 hover:decoration-[var(--hud-accent)]"
+            className="border-b border-dashed border-[var(--hud-border)] pb-px hover:border-[var(--hud-muted)] hover:text-[var(--hud-text)]"
           >
             {token.value}
           </button>
@@ -96,39 +128,35 @@ function CardView({
     return (
       <div className="pb-1">
         {translation.status === "done" && (
-          <p className="text-[16px] leading-snug">{translation.text}</p>
+          <p className="text-[14px] leading-[1.7]">{translation.text}</p>
         )}
         {translation.status === "loading" && (
-          <p className="text-[13px] text-[var(--hud-muted)]">{t("translateLoading")}</p>
+          <p className="text-[13px] text-[var(--hud-faint)]">{t("translateLoading")}</p>
         )}
         {translation.status === "error" && (
           <>
-            <p className="text-[13px] text-[var(--hud-muted)]">{t("translateFailed")}</p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-red-300/80">
+            <p className="text-[13px] text-[var(--hud-faint)]">{t("translateFailed")}</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--hud-err)]">
               {translation.error}
             </p>
           </>
         )}
         {!collapsed && (
-          <p className="mt-1 line-clamp-3 text-[11px] leading-relaxed text-[var(--hud-muted)]">
+          <p className="mt-1.5 line-clamp-3 text-[12px] leading-[1.6] text-[var(--hud-muted)]">
             {card.original}
           </p>
         )}
-        <div className="mt-1 flex items-center gap-2">
-          <p className="font-mono text-[10px] text-[var(--hud-muted)]/70">
+        <div className="mt-2 flex items-center gap-2 border-t border-[var(--hud-border-soft)] pt-2">
+          <p className="font-mono text-[10.5px] text-[var(--hud-faint)] tabular-nums">
             {card.elapsedMs !== null &&
               `${card.source ?? ""} · ${card.elapsedMs.toFixed(0)}ms`}
             {translation.status === "done" &&
               ` · ${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
           </p>
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            {/* 两个朗读入口：原文与译文分开。读英文原文时想听中文译文，就点第二个。 */}
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {/* 两个朗读入口：原文与译文分开。读英文原文想听中文译文，就点第二个。 */}
             {onSpeak && speakOriginal && (card.original ?? "").trim().length > 0 && (
-              <button
-                type="button"
-                onClick={() => onSpeak(card.original as string)}
-                className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
-              >
+              <button type="button" onClick={() => onSpeak(card.original as string)} className="hud-btn">
                 {t("speakOriginal")}
               </button>
             )}
@@ -139,7 +167,7 @@ function CardView({
                 <button
                   type="button"
                   onClick={() => onSpeak((card.translation as { text: string }).text)}
-                  className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+                  className="hud-btn"
                 >
                   {t("speakTranslation")}
                 </button>
@@ -148,7 +176,7 @@ function CardView({
               <button
                 type="button"
                 onClick={() => onOpenReader(card.original as string)}
-                className="rounded border border-white/12 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+                className="hud-btn"
               >
                 {t("readerOpen")}
               </button>
@@ -162,9 +190,9 @@ function CardView({
   if (collapsed) {
     // 旧卡片压成一行：只留词 + 第一条释义，点击可跳回。
     return (
-      <div className="border-b border-white/6 py-1">
-        <p className="truncate text-[13px] text-[var(--hud-muted)]">
-          <span className="text-[var(--hud-text)]/70">{card.word}</span>
+      <div className="border-b border-[var(--hud-border-soft)] py-1">
+        <p className="truncate text-[12px] text-[var(--hud-muted)]">
+          <span className="text-[var(--hud-text)]">{card.word}</span>
           {entry?.translation ? ` — ${entry.translation.split("\n")[0]}` : ""}
         </p>
       </div>
@@ -174,35 +202,31 @@ function CardView({
   return (
     <div className="pb-1">
       <div className="flex items-baseline gap-2">
-        <p className="min-w-0 flex-1 break-words text-[20px] leading-tight font-medium">
+        <p className="min-w-0 flex-1 break-words font-[family-name:var(--hud-serif)] text-[19px] leading-tight">
           {card.word}
         </p>
-        {card.source && (
-          <span
-            className="shrink-0 rounded px-1.5 py-0.5 text-[10px]"
-            style={{
-              color: "var(--hud-accent)",
-              border: "1px solid color-mix(in oklch, var(--hud-accent) 40%, transparent)",
-            }}
-          >
-            {card.source}
+        {entry?.pos && (
+          <span className="shrink-0 border border-[var(--hud-border-soft)] px-1 text-[10.5px] text-[var(--hud-muted)]">
+            {entry.pos}
           </span>
         )}
       </div>
 
-      {entry && sections?.phonetic && entry.phonetic && (
-        <p className="font-mono text-[12px] text-[var(--hud-muted)]">
-          /{entry.phonetic}/
-        </p>
-      )}
+      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        {entry && sections?.phonetic && entry.phonetic && (
+          <span className="font-mono text-[11px] text-[var(--hud-faint)]">
+            /{entry.phonetic}/
+          </span>
+        )}
+      </div>
 
       {entry && sections?.translation && entry.translation && (
-        <div className="mt-0.5 space-y-0.5">
+        <div className="mt-1 space-y-0.5">
           {entry.translation
             .split("\n")
             .filter((line) => line.trim().length > 0)
             .map((line, index) => (
-              <p key={`${index}-${line.slice(0, 8)}`} className="text-[13px] leading-relaxed">
+              <p key={`${index}-${line.slice(0, 8)}`} className="text-[13.5px] leading-[1.6]">
                 <WordLinks text={line} onWord={onWord} />
               </p>
             ))}
@@ -210,14 +234,14 @@ function CardView({
       )}
 
       {entry && sections?.definition && entry.definition && (
-        <div className="mt-1 space-y-0.5">
+        <div className="mt-2 space-y-0.5 border-t border-[var(--hud-border-soft)] pt-2">
           {entry.definition
             .split("\n")
             .filter((line) => line.trim().length > 0)
             .map((line, index) => (
               <p
                 key={`def-${index}`}
-                className="text-[12px] leading-relaxed text-[var(--hud-muted)]"
+                className="text-[12px] leading-[1.65] text-[var(--hud-muted)]"
               >
                 <WordLinks text={line} onWord={onWord} />
               </p>
@@ -225,36 +249,31 @@ function CardView({
         </div>
       )}
 
-      {entry && sections?.exchange && entry.exchange && (
-        <p className="mt-1 font-mono text-[11px] text-[var(--hud-muted)]">
-          {entry.exchange}
-        </p>
-      )}
-
-      {entry && sections?.tags && entry.tag && (
-        <div className="mt-1 flex flex-wrap gap-1">
-          {entry.tag.split(" ").slice(0, 6).map((tag) => (
-            <span
-              key={tag}
-              className="rounded border border-white/10 px-1 py-0.5 text-[10px] text-[var(--hud-muted)]"
-            >
-              {tag}
-            </span>
-          ))}
+      {entry && (sections?.exchange || sections?.tags) && (
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] text-[var(--hud-faint)]">
+          {sections?.exchange && entry.exchange && (
+            <span className="font-mono">{entry.exchange}</span>
+          )}
+          {sections?.tags &&
+            entry.tag &&
+            entry.tag
+              .split(" ")
+              .slice(0, 6)
+              .map((tag) => <span key={tag}>#{tag}</span>)}
         </div>
       )}
 
       {/* 中文切出多个词时不猜用户想查哪个，列成候选让他点 */}
       {card.candidates.length > 0 && (
-        <div className="mt-1">
-          <p className="mb-1 text-[11px] text-[var(--hud-muted)]">{t("cjkCandidates")}</p>
-          <div className="flex flex-wrap gap-1">
+        <div className="mt-2">
+          <p className="mb-1 text-[11px] text-[var(--hud-faint)]">{t("cjkCandidates")}</p>
+          <div className="flex flex-wrap gap-1.5">
             {card.candidates.map((candidate) => (
               <button
                 key={candidate}
                 type="button"
                 onClick={() => onWord(candidate)}
-                className="rounded border border-white/12 px-1.5 py-0.5 text-[12px] text-[var(--hud-text)] transition hover:border-[var(--hud-accent)] hover:text-[var(--hud-accent)]"
+                className="hud-btn"
               >
                 {candidate}
               </button>
@@ -264,11 +283,11 @@ function CardView({
       )}
 
       {!entry && card.candidates.length === 0 && (
-        <p className="text-[12px] text-[var(--hud-muted)]">{t("cardNotInDict")}</p>
+        <p className="text-[12px] text-[var(--hud-faint)]">{t("cardNotInDict")}</p>
       )}
 
       {card.elapsedMs !== null && (
-        <p className="mt-1 font-mono text-[10px] text-[var(--hud-muted)]/70">
+        <p className="mt-1.5 border-t border-[var(--hud-border-soft)] pt-1.5 font-mono text-[10.5px] text-[var(--hud-faint)] tabular-nums">
           {card.source ?? ""} · {card.elapsedMs.toFixed(0)}ms
         </p>
       )}
@@ -282,7 +301,6 @@ export function ShellView() {
 
   const capture = useAppStore((state) => state.capture);
   const settings = useAppStore((state) => state.settings);
-  const latencyMs = useAppStore((state) => state.latencyMs);
   const cards = useDeckStore((state) => state.cards);
   const showHints = settings?.showHints ?? true;
   const push = useDeckStore((state) => state.push);
@@ -290,6 +308,8 @@ export function ShellView() {
   const setTranslation = useDeckStore((state) => state.setTranslation);
   const [readerError, setReaderError] = useState<string | null>(null);
   const [speechReady, setSpeechReady] = useState(false);
+  /** 标题栏显示"这条信息从哪来、多快"，取最底层那张卡。 */
+  const rootCard = cards[0] ?? null;
 
   const contentRef = useRef<HTMLDivElement>(null);
   const lastRequested = useRef(0);
@@ -368,15 +388,15 @@ export function ShellView() {
   //
   // 幂等只靠 `translation.status === "idle"` 判断，**不要**再拿卡片 id 做去重：
   // 每次呼出 Deck 都会 reset，根卡片 id 恒为 0，用 id 去重会导致「只有第一次会翻译」。
-  const rootCard = cards[0];
+  const translateCard = cards[0];
   useEffect(() => {
-    if (!shouldTranslate(rootCard)) {
+    if (!shouldTranslate(translateCard)) {
       return;
     }
-    const cardId = rootCard.id;
+    const cardId = translateCard.id;
     setTranslation(cardId, { status: "loading" });
     void ipc
-      .translateText(rootCard.original)
+      .translateText(translateCard.original)
       .then((result) => {
         setTranslation(cardId, {
           status: "done",
@@ -392,7 +412,7 @@ export function ShellView() {
           error: reason instanceof Error ? reason.message : String(reason),
         });
       });
-  }, [rootCard, setTranslation]);
+  }, [translateCard, setTranslation]);
 
   const speak = (text: string) => {
     if (!isTauri()) {
@@ -441,34 +461,57 @@ export function ShellView() {
 
   return (
     <div className="lm-panel flex flex-col text-[var(--hud-text)]">
-      <header
-        data-tauri-drag-region
-        className="flex shrink-0 items-center gap-2 border-b border-white/8 px-3 py-2"
-      >
-        <span
-          className="size-2 rounded-full"
-          style={{ background: "var(--hud-accent)" }}
-        />
-        <span className="text-[13px] font-medium tracking-wide">{t("appName")}</span>
-        <span className="text-[11px] text-[var(--hud-muted)]">{t("hudTagline")}</span>
-        {latencyMs !== null && (
-          <span className="ml-auto font-mono text-[11px] text-[var(--hud-accent)]">
-            {t("latency")} {latencyMs.toFixed(1)}ms
+      <style>{HUD_CTL_STYLES}</style>
+      {/* 标题栏只放"这条信息从哪来、多快"，开发用的性能与标语挪去日志 */}
+      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--hud-border-soft)] px-3 py-1.5">
+        <span className="size-1.5 shrink-0 rounded-full" style={{ background: "var(--hud-accent)" }} />
+        <span className="text-[11.5px] text-[var(--hud-muted)]">
+          {rootCard?.source ?? t("appName")}
+        </span>
+        {rootCard?.elapsedMs != null && (
+          <span className="font-mono text-[11px] tabular-nums text-[var(--hud-faint)]">
+            {rootCard.elapsedMs.toFixed(0)} ms
           </span>
         )}
+        <span className="ml-auto flex items-center gap-0.5">
+          <button
+            type="button"
+            aria-label={t("settingsTitle")}
+            title={t("settingsTitle")}
+            onClick={() => {
+              void ipc.openSettings().catch((reason: unknown) => {
+                void ipc.logFrontend("error", "openSettings failed: " + String(reason));
+              });
+            }}
+            className="hud-ico"
+          >
+            ⚙
+          </button>
+          <button
+            type="button"
+            aria-label={t("hudHintEscape")}
+            title={t("hudHintEscape")}
+            onClick={() => {
+              void ipc.hudHide().catch(() => undefined);
+            }}
+            className="hud-ico"
+          >
+            ✕
+          </button>
+        </span>
       </header>
 
       {cards.length > 1 && (
-        <nav className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-0.5 border-b border-white/8 px-3 py-1 text-[11px] text-[var(--hud-muted)]">
+        <nav className="flex shrink-0 flex-wrap items-center gap-x-1 border-b border-[var(--hud-border-soft)] px-3 py-1 text-[11px] text-[var(--hud-faint)]">
           {cards.map((card, index) => (
             <span key={card.id} className="flex items-center gap-1">
-              {index > 0 && <span className="opacity-40">›</span>}
+              {index > 0 && <span className="opacity-50">›</span>}
               <button
                 type="button"
                 onClick={() => jumpTo(index)}
                 className={
                   index === cards.length - 1
-                    ? "text-[var(--hud-text)]"
+                    ? "text-[var(--hud-accent)]"
                     : "hover:text-[var(--hud-text)]"
                 }
               >
@@ -521,12 +564,11 @@ export function ShellView() {
       </main>
 
       {showHints && (
-        <footer className="flex shrink-0 items-center gap-2 border-t border-white/8 px-3 py-1.5">
-          <Hint label={triggerLabel(settings)} />
-          <Hint label={t("hudHintEscape")} />
-          <span className="ml-auto text-[11px] text-[var(--hud-muted)]">
-            {t("hudHintSettings")}
-          </span>
+        <footer className="flex shrink-0 items-center gap-1.5 border-t border-[var(--hud-border-soft)] px-3 py-1.5">
+          <span className="hud-key">{triggerKeyLabel(settings)}</span>
+          <span className="text-[10.5px] text-[var(--hud-faint)]">{t("hudHintTrigger")}</span>
+          <span className="hud-key ml-2">Esc</span>
+          <span className="text-[10.5px] text-[var(--hud-faint)]">{t("hudHintEscapeShort")}</span>
         </footer>
       )}
     </div>

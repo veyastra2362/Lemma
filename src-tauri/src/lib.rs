@@ -211,6 +211,18 @@ pub fn run() {
                     Err(error) => logs::line(format!("speak smoke failed: {error}")),
                 }
             }
+            // 浮层卡片冒烟：LEMMA_HUD_SMOKE_CARD="<text>" 直接塞一张卡片再弹浮层，
+            // 用来核对卡片排版（真实取词需要焦点，自动化时不可靠）。
+            if let Ok(text) = std::env::var("LEMMA_HUD_SMOKE_CARD") {
+                // 必须等前端挂载并订阅了 hud://presented 再弹，否则事件发到空气里
+                let handle = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(1800)).await;
+                    let _ = crate::core::selection::store_ocr(text.clone(), "Chrome".to_string(), 12.0);
+                    shell::present(&handle);
+                    logs::line(format!("hud smoke card: {text}"));
+                });
+            }
             // 窗口截图冒烟：LEMMA_CAPTURE_WINDOW_SMOKE=settings|reader|shell
             // 为什么要有：PowerShell 不是 DPI 感知进程，GetWindowRect 给的是虚拟化坐标，
             // 用它去截物理像素会错位（本机 125% 缩放下踩过）。进程内取矩形才是准的。
