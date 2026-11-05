@@ -152,10 +152,8 @@ function CardView({
         )}
         <div className="mt-2 flex items-center gap-2 border-t border-[var(--hud-border-soft)] pt-2">
           <p className="font-mono text-[10.5px] text-[var(--hud-faint)] tabular-nums">
-            {card.elapsedMs !== null &&
-              `${card.source ?? ""} · ${card.elapsedMs.toFixed(0)}ms`}
             {translation.status === "done" &&
-              ` · ${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
+              `${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
           </p>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             {/* 两个朗读入口：原文与译文分开。读英文原文想听中文译文，就点第二个。 */}
@@ -290,11 +288,7 @@ function CardView({
         <p className="text-[12px] text-[var(--hud-faint)]">{t("cardNotInDict")}</p>
       )}
 
-      {card.elapsedMs !== null && (
-        <p className="mt-1.5 border-t border-[var(--hud-border-soft)] pt-1.5 font-mono text-[10.5px] text-[var(--hud-faint)] tabular-nums">
-          {card.source ?? ""} · {card.elapsedMs.toFixed(0)}ms
-        </p>
-      )}
+      {/* 来源与取词耗时只在标题栏显示一次，这里不再重复 */}
     </div>
   );
 }
