@@ -24,6 +24,7 @@ const zhCN = {
   settingsSectionTrigger: "呼出方式",
   settingsTriggerDoubleControl: "双击 Ctrl（默认）",
   settingsTriggerDefault: "当前使用",
+  settingsTriggerCurrent: "当前键位",
   settingsTriggerHotkeyActive: "已改用热键",
   settingsTriggerDoubleControlKey: "双击 Ctrl",
   settingsTriggerResetDefault: "恢复默认",

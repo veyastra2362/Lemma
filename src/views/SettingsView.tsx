@@ -4,8 +4,41 @@ import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t } from "../i18n";
 import { ipc, isTauri } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
-import type { CaptureMode, CardSections, ModelStatus, Settings } from "../types";
+import type { Accent, CaptureMode, CardSections, ModelStatus, Settings } from "../types";
 import { formatHotkey } from "../utils/hotkey";
+
+/*
+  设置窗口。
+
+  结构：左侧窄分类导航 + 右侧内容，**一次只渲染一个分类**。
+  之前是一整页长列表，滚到最后要翻好几屏；分类化之后每一屏都能扫完。
+  设计约束见 `docs/ui-redesign-prompts.md`：无渐变、无发光、圆角 6/8/12、只有一条陶土色指示线。
+*/
+
+type Category =
+  | "trigger"
+  | "capture"
+  | "models"
+  | "speech"
+  | "ocr"
+  | "compare"
+  | "translate"
+  | "card"
+  | "ui"
+  | "perf";
+
+const NAV: { key: Category; label: string }[] = [
+  { key: "trigger", label: t("settingsSectionTrigger") },
+  { key: "capture", label: t("settingsSectionCapture") },
+  { key: "models", label: t("settingsSectionModels") },
+  { key: "speech", label: t("settingsSectionSpeech") },
+  { key: "ocr", label: t("settingsSectionOcr") },
+  { key: "compare", label: t("settingsSectionReader") },
+  { key: "translate", label: t("settingsSectionTranslate") },
+  { key: "card", label: t("settingsSectionCard") },
+  { key: "ui", label: t("settingsSectionLooks") },
+  { key: "perf", label: t("settingsSectionPerf") },
+];
 
 const CAPTURE_OPTIONS: { value: CaptureMode; label: string; hint: string }[] = [
   { value: "auto", label: t("settingsCaptureAuto"), hint: t("settingsCaptureAutoHint") },
@@ -29,12 +62,103 @@ const SECTION_OPTIONS: { key: keyof CardSections; label: string }[] = [
   { key: "exchange", label: "词形变化" },
 ];
 
-function Stat({ label, value }: { label: string; value: string }) {
+/** 一行设置：左侧标签与说明，右侧控件。 */
+function Row({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children?: React.ReactNode;
+}) {
   return (
-    <div className="rounded-lg border border-white/10 px-3 py-2">
-      <div className="text-[11px] text-[var(--hud-muted)]">{label}</div>
-      <div className="mt-0.5 font-mono text-[15px]">{value}</div>
+    <div className="set-row">
+      <div className="min-w-0">
+        <div className="text-[12.5px]">{label}</div>
+        {hint && (
+          <p className="mt-0.5 text-[11px] leading-[1.55] text-[var(--hud-muted)]">{hint}</p>
+        )}
+      </div>
+      {children && <div className="ml-auto flex shrink-0 items-center gap-2">{children}</div>}
     </div>
+  );
+}
+
+function Switch({
+  on,
+  label,
+  onChange,
+}: {
+  on: boolean;
+  label: string;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      className={`set-switch ${on ? "is-on" : ""}`}
+    />
+  );
+}
+
+function Radio({
+  active,
+  label,
+  hint,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  hint?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} className={`set-radio ${active ? "is-on" : ""}`}>
+      <span className="set-radio-mark" />
+      <span className="min-w-0">
+        <span className="block text-[12.5px]">{label}</span>
+        {hint && (
+          <span className="mt-0.5 block text-[11px] leading-[1.55] text-[var(--hud-muted)]">
+            {hint}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function Range({
+  value,
+  min,
+  max,
+  step,
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onCommit: (next: number) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={draft}
+      onChange={(event) => setDraft(Number(event.target.value))}
+      onPointerUp={() => onCommit(draft)}
+      onKeyUp={() => onCommit(draft)}
+      className="set-range"
+    />
   );
 }
 
@@ -62,8 +186,8 @@ function TextField({
   };
 
   return (
-    <label className="block rounded-lg border border-white/10 px-3 py-2">
-      <span className="block text-[11px] text-[var(--hud-muted)]">{label}</span>
+    <label className="block border-b border-[var(--hud-border-soft)] py-2 last:border-b-0">
+      <span className="block text-[12.5px]">{label}</span>
       <input
         type={secret ? "password" : "text"}
         value={draft}
@@ -74,49 +198,39 @@ function TextField({
             commit();
           }
         }}
-        className="mt-1 w-full bg-transparent font-mono text-[12px] text-[var(--hud-text)] outline-none placeholder:text-[var(--hud-muted)]/50"
+        className="mt-1 w-full border-b border-[var(--hud-border)] bg-transparent pb-1 font-mono text-[12px] text-[var(--hud-text)] outline-none placeholder:text-[var(--hud-faint)] focus:border-[var(--hud-accent)]"
         placeholder={hint}
       />
     </label>
   );
 }
 
-function Radio({
-  active,
+/** 模型目录行：状态点 + 路径 + 打开目录。 */
+function ModelRow({
   label,
-  hint,
-  onClick,
+  ready,
+  dir,
+  onOpen,
 }: {
-  active: boolean;
   label: string;
-  hint?: string;
-  onClick: () => void;
+  ready: boolean;
+  dir: string;
+  onOpen: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
-        active
-          ? "border-[var(--hud-accent)] bg-white/5"
-          : "border-white/10 hover:border-white/25"
-      }`}
-    >
-      <span
-        className="mt-1 size-2 shrink-0 rounded-full"
-        style={{
-          background: active ? "var(--hud-accent)" : "oklch(1 0 0 / 20%)",
-        }}
-      />
-      <span className="min-w-0">
-        <span className="block text-[13px]">{label}</span>
-        {hint && (
-          <span className="mt-0.5 block text-[11px] leading-snug text-[var(--hud-muted)]">
-            {hint}
-          </span>
-        )}
-      </span>
-    </button>
+    <div className="border-b border-[var(--hud-border-soft)] py-2.5 last:border-b-0">
+      <div className="flex items-center gap-2">
+        <span className="text-[12.5px]">{label}</span>
+        <span className={`set-status ${ready ? "is-ok" : "is-off"}`}>
+          <i />
+          {ready ? t("settingsModelReady") : t("settingsModelMissing")}
+        </span>
+        <button type="button" onClick={onOpen} className="set-btn ml-auto">
+          {t("settingsModelOpen")}
+        </button>
+      </div>
+      <p className="mt-1 break-all font-mono text-[10.5px] text-[var(--hud-faint)]">{dir}</p>
+    </div>
   );
 }
 
@@ -128,6 +242,7 @@ export function SettingsView() {
   const settings = useAppStore((state) => state.settings);
   const setSettings = useAppStore((state) => state.setSettings);
 
+  const [cat, setCat] = useState<Category>("trigger");
   const [recordingTarget, setRecordingTarget] = useState<null | "hud" | "reader" | "ocr">(null);
   const [models, setModels] = useState<ModelStatus | null>(null);
   const recording = recordingTarget !== null;
@@ -219,525 +334,544 @@ export function SettingsView() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [recordingTarget, apply]);
 
-  const startup = stats ? `${stats.startup_ms.toFixed(0)} ms` : t("noData");
-  const presents = stats ? String(stats.hud_presents) : t("noData");
-  const lastPaint =
-    latencyMs !== null
-      ? `${latencyMs.toFixed(1)} ms`
-      : stats?.last_first_paint_ms != null
-        ? `${stats.last_first_paint_ms.toFixed(1)} ms`
-        : t("noData");
-
   const isDoubleControl = settings?.trigger === "doubleControl";
   const sections = settings?.cardSections;
 
+  const recordButton = (target: "hud" | "ocr") => (
+    <button
+      type="button"
+      onClick={() => {
+        setError(null);
+        setRecordingTarget(recordingTarget === target ? null : target);
+      }}
+      className="set-btn"
+    >
+      {recordingTarget === target ? t("settingsHotkeyRecording") : t("settingsHotkeyRecord")}
+    </button>
+  );
+
+  const openDir = (kind: "ocr" | "tts") => {
+    setError(null);
+    void ipc.openModelDir(kind).catch((reason: unknown) => {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    });
+  };
+
   return (
     <div className="lm-panel flex flex-col text-[var(--hud-text)]">
-      <header
-        data-tauri-drag-region
-        className="flex shrink-0 items-center gap-2 border-b border-white/8 px-4 py-2.5"
-      >
-        <span className="text-[13px] font-medium">
-          {t("appName")} · {t("settingsTitle")}
-        </span>
+      <style>{SET_STYLES}</style>
+
+      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--hud-border-soft)] px-4 py-2">
+        <span className="text-[12px] text-[var(--hud-muted)]">{t("appName")}</span>
+        <span className="text-[12px]">{t("settingsTitle")}</span>
         <button
           type="button"
           onClick={() => void ipc.closeSettings()}
           title={t("settingsClose")}
           aria-label={t("settingsClose")}
-          className="ml-auto grid size-6 place-items-center rounded-md text-[var(--hud-muted)] transition hover:bg-white/10 hover:text-[var(--hud-text)]"
+          className="set-ico ml-auto"
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path
-              d="M2 2 L10 10 M10 2 L2 10"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          </svg>
+          ✕
         </button>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {/* ---- 呼出方式 ---- */}
-        <section>
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionTrigger")}
-          </h2>
-          {/*
-            合成一张卡片：默认就是「双击 Ctrl」，录制热键只是可选的覆盖。
-            之前是两个互斥的选项卡，看起来像"必须二选一"，而绝大多数人只用默认那个。
-          */}
-          <div
-            className={`rounded-lg border px-3 py-2 ${
-              isDoubleControl
-                ? "border-[var(--hud-accent)] bg-white/5"
-                : "border-white/10"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  isDoubleControl ? "bg-[var(--hud-accent)]" : "bg-white/25"
-                }`}
-              />
-              <span className="text-[13px]">{t("settingsTriggerDoubleControl")}</span>
-              <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] text-[var(--hud-muted)]">
-                {isDoubleControl ? t("settingsTriggerDefault") : t("settingsTriggerHotkeyActive")}
-              </span>
-              {/* 默认模式下左边已经写了「双击 Ctrl」，这里不再重复；只在改用热键时显示当前键位 */}
-              {!isDoubleControl && (
-                <span className="ml-auto font-mono text-[12px] text-[var(--hud-accent)]">
-                  {settings?.hotkey ?? "—"}
-                </span>
-              )}
-              {isDoubleControl && <span className="ml-auto" />}
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setRecordingTarget(recordingTarget === "hud" ? null : "hud");
-                }}
-                className="shrink-0 rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
-              >
-                {recordingTarget === "hud"
-                  ? t("settingsHotkeyRecording")
-                  : t("settingsHotkeyRecord")}
-              </button>
-              {!isDoubleControl && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    apply({ trigger: "doubleControl" });
-                  }}
-                  className="shrink-0 rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
-                >
-                  {t("settingsTriggerResetDefault")}
-                </button>
-              )}
-            </div>
-            <div className="mt-1 pl-3.5 text-[11px] leading-relaxed text-[var(--hud-muted)]">
-              {isDoubleControl
-                ? t("settingsTriggerDoubleControlHint")
-                : t("settingsHotkeyRule")}
-            </div>
-          </div>
-        </section>
+      {error && (
+        <p className="shrink-0 border-b border-[var(--hud-border-soft)] px-4 py-1.5 text-[11px] text-[var(--hud-err)]">
+          {error}
+        </p>
+      )}
 
-        {/* ---- 取词模式 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionCapture")}
-          </h2>
-          <div className="space-y-1.5">
-            {CAPTURE_OPTIONS.map((option) => (
-              <Radio
-                key={option.value}
-                active={settings?.captureMode === option.value}
-                label={option.label}
-                hint={option.hint}
-                onClick={() => apply({ captureMode: option.value })}
-              />
-            ))}
-          </div>
-        </section>
-
-        {/* ---- 本地模型 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionModels")}
-          </h2>
-          <p className="mb-2 text-[11px] leading-relaxed text-[var(--hud-muted)]">
-            {t("settingsModelsHint")}
-          </p>
-          <div className="space-y-1.5">
-            {[
-              { kind: "ocr" as const, label: t("settingsModelOcr"), ready: models?.ocrReady, dir: models?.ocrDir },
-              { kind: "tts" as const, label: t("settingsModelTts"), ready: models?.ttsReady, dir: models?.ttsDir },
-            ].map((row) => (
-              <div
-                key={row.kind}
-                className="rounded-lg border border-white/10 px-3 py-2"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px]">{row.label}</span>
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-[10px] ${
-                      row.ready
-                        ? "bg-emerald-500/15 text-emerald-300"
-                        : "bg-amber-500/15 text-amber-300"
-                    }`}
-                  >
-                    {row.ready ? t("settingsModelReady") : t("settingsModelMissing")}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-[var(--hud-muted)]">
-                    {row.dir ?? ""}
-                  </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    void ipc.openModelDir(row.kind).catch((reason: unknown) => {
-                      setError(reason instanceof Error ? reason.message : String(reason));
-                    });
-                  }}
-                  className="shrink-0 rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
-                >
-                  {t("settingsModelOpen")}
-                </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ---- 朗读 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionSpeech")}
-          </h2>
-          <div className="rounded-lg border border-white/10 px-3 py-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px]">{t("settingsSpeechSpeed")}</span>
-              <span className="font-mono text-[12px] text-[var(--hud-accent)]">
-                {(settings?.speechSpeed ?? 1).toFixed(2)}×
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0.6}
-              max={1.4}
-              step={0.05}
-              value={settings?.speechSpeed ?? 1}
-              onChange={(event) =>
-                apply({ speechSpeed: Number(event.target.value) })
-              }
-              className="mt-2 w-full accent-[var(--hud-accent)]"
-            />
-            <p className="mt-1 text-[11px] text-[var(--hud-muted)]">
-              {t("settingsSpeechSpeedHint")}
-            </p>
-          </div>
-        </section>
-
-        {/* ---- 朗读按钮 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionSpeakButtons")}
-          </h2>
-          <div className="space-y-1.5">
-            {[
-              { key: "speakOriginal" as const, label: t("settingsSpeakOriginal") },
-              { key: "speakTranslation" as const, label: t("settingsSpeakTranslation") },
-            ].map((row) => (
-              <label
-                key={row.key}
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 px-3 py-2"
-              >
-                <input
-                  type="checkbox"
-                  checked={settings?.[row.key] ?? true}
-                  onChange={(event) => {
-                    setError(null);
-                    apply({ [row.key]: event.target.checked });
-                  }}
-                  className="h-3.5 w-3.5 accent-[var(--hud-accent)]"
-                />
-                <span className="text-[12px]">{row.label}</span>
-              </label>
-            ))}
-          </div>
-        </section>
-
-        {/* ---- 截图识别 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionOcr")}
-          </h2>
-          <div className="space-y-1.5">
-            <Radio
-              active={settings?.ocrHotkeyEnabled !== false}
-              label={t("settingsOcrToggle")}
-              hint={t("settingsOcrToggleHint")}
-              onClick={() => apply({ ocrHotkeyEnabled: true })}
-            />
-            <Radio
-              active={settings?.ocrHotkeyEnabled === false}
-              label={t("settingsReaderOff")}
-              hint={t("settingsOcrToggleOffHint")}
-              onClick={() => apply({ ocrHotkeyEnabled: false })}
-            />
-            {settings && settings.ocrHotkeyEnabled !== false && (
-              <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2">
-                <span className="text-[12px] text-[var(--hud-muted)]">
-                  {t("settingsOcrHotkeyLabel")}
-                </span>
-                <span className="ml-auto font-mono text-[12px] text-[var(--hud-accent)]">
-                  {settings.ocrHotkey}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setRecordingTarget(recordingTarget === "ocr" ? null : "ocr");
-                  }}
-                  className="rounded-md border border-white/15 px-2 py-0.5 text-[11px] hover:border-white/35"
-                >
-                  {recordingTarget === "ocr"
-                    ? t("settingsHotkeyRecording")
-                    : t("settingsHotkeyRecord")}
-                </button>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* ---- 截图对照窗口（原「双栏」） ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionReader")}
-          </h2>
-          <p className="mb-2 text-[11px] leading-relaxed text-[var(--hud-muted)]">
-            {t("settingsReaderIntro")}
-          </p>
-          <div className="space-y-1.5">
-            <Radio
-              active={settings?.readerOpenMode === "off"}
-              label={t("settingsReaderOff")}
-              hint={t("settingsReaderOffHint")}
-              onClick={() => apply({ readerOpenMode: "off" })}
-            />
-            <Radio
-              // 旧的 hotkey 模式已移除（那是"取词后开纯文本双栏"，与 HUD 重复），
-              // 存量配置里是 hotkey 的一律按"打开"处理
-              active={settings?.readerOpenMode !== "off"}
-              label={t("settingsReaderHud")}
-              hint={t("settingsReaderHudHint")}
-              onClick={() => apply({ readerOpenMode: "hud" })}
-            />
-          </div>
-        </section>
-
-        {/* ---- 翻译 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionTranslate")}
-          </h2>
-          <div className="space-y-1.5">
-            <Radio
-              active={settings?.translateProvider === "google"}
-              label={t("settingsTranslateGoogle")}
-              hint={t("settingsTranslateGoogleHint")}
-              onClick={() => apply({ translateProvider: "google" })}
-            />
-            <Radio
-              active={settings?.translateProvider === "openAi"}
-              label={t("settingsTranslateOpenai")}
-              hint={t("settingsTranslateOpenaiHint")}
-              onClick={() => apply({ translateProvider: "openAi" })}
-            />
-          </div>
-
-          <div className="mt-2 space-y-1.5">
-            <div className="flex gap-1.5">
-              {(
-                [
-                  { value: "zh" as const, label: t("settingsTargetZh") },
-                  { value: "en" as const, label: t("settingsTargetEn") },
-                ]
-              ).map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => apply({ targetLang: option.value })}
-                  className={`rounded-md border px-3 py-1 text-[12px] transition ${
-                    settings?.targetLang === option.value
-                      ? "border-[var(--hud-accent)] text-[var(--hud-accent)]"
-                      : "border-white/12 text-[var(--hud-muted)] hover:border-white/30"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-            {settings?.translateProvider === "openAi" && settings && (
-              <div className="space-y-1.5">
-                <TextField
-                  label={t("settingsOpenaiBaseUrl")}
-                  hint="https://api.openai.com/v1"
-                  value={settings.openaiBaseUrl}
-                  onCommit={(next) => apply({ openaiBaseUrl: next })}
-                />
-                <TextField
-                  label={t("settingsOpenaiKey")}
-                  hint={t("settingsOpenaiKeyHint")}
-                  value={settings.openaiApiKey}
-                  secret
-                  onCommit={(next) => apply({ openaiApiKey: next })}
-                />
-                <TextField
-                  label={t("settingsOpenaiModel")}
-                  hint="gpt-4o-mini"
-                  value={settings.openaiModel}
-                  onCommit={(next) => apply({ openaiModel: next })}
-                />
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* ---- 卡片内容 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionCard")}
-          </h2>
-          <div className="flex flex-wrap gap-1.5">
-            {SECTION_OPTIONS.map((option) => {
-              const active = sections?.[option.key] ?? false;
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() =>
-                    sections &&
-                    apply({
-                      cardSections: { ...sections, [option.key]: !active },
-                    })
-                  }
-                  className={`rounded-md border px-2 py-1 text-[12px] transition ${
-                    active
-                      ? "border-[var(--hud-accent)] text-[var(--hud-accent)]"
-                      : "border-white/12 text-[var(--hud-muted)] hover:border-white/30"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* ---- 配色 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionAccent")}
-          </h2>
-          <div className="flex gap-1.5">
-            {[
-              { value: "clay" as const, label: t("settingsAccentClay") },
-              { value: "olive" as const, label: t("settingsAccentOlive") },
-            ].map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  apply({ accent: option.value });
-                }}
-                className={`flex-1 rounded-[var(--hud-r-ctl)] border px-3 py-2 text-left text-[12px] ${
-                  settings?.accent === option.value
-                    ? "border-[var(--hud-accent)] bg-[var(--hud-raised)]"
-                    : "border-[var(--hud-border-soft)] hover:border-[var(--hud-border)]"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <span
-                    className="h-3 w-3 shrink-0 rounded-full border"
-                    style={{
-                      backgroundColor:
-                        option.value === "clay" ? "#bd7454" : "#98a67d",
-                      borderColor: "var(--hud-border)",
-                    }}
-                  />
-                  {option.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* ---- HUD 最大高度 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 flex items-center gap-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionSize")}
-            <span className="ml-auto font-mono text-[12px] text-[var(--hud-accent)]">
-              {settings?.hudMaxHeight ?? 480} px
-            </span>
-          </h2>
-          <input
-            type="range"
-            min={160}
-            max={720}
-            step={20}
-            value={settings?.hudMaxHeight ?? 480}
-            onChange={(event) =>
-              apply({ hudMaxHeight: Number(event.target.value) })
-            }
-            className="w-full accent-[var(--hud-accent)]"
-          />
-        </section>
-
-        {error && (
-          <p className="mt-2 rounded-md border border-red-400/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-300">
-            {t("settingsHotkeySaveFailed")}：{error}
-          </p>
-        )}
-
-        {/* ---- 界面 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionLooks")}
-          </h2>
-          <button
-            type="button"
-            onClick={() => apply({ showHints: !(settings?.showHints ?? true) })}
-            className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
-              settings?.showHints ?? true
-                ? "border-[var(--hud-accent)] bg-white/5"
-                : "border-white/10 hover:border-white/25"
-            }`}
-          >
-            <span
-              className="mt-1 grid size-3 shrink-0 place-items-center rounded-[3px] border"
-              style={{
-                borderColor: (settings?.showHints ?? true)
-                  ? "var(--hud-accent)"
-                  : "oklch(1 0 0 / 25%)",
-              }}
+      <div className="flex min-h-0 flex-1">
+        <nav
+          aria-label={t("settingsTitle")}
+          className="w-[152px] shrink-0 overflow-y-auto border-r border-[var(--hud-border-soft)] py-2"
+        >
+          {NAV.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setCat(item.key)}
+              className={`set-nav ${cat === item.key ? "is-on" : ""}`}
             >
-              {(settings?.showHints ?? true) && (
-                <span
-                  className="block size-1.5 rounded-[1px]"
-                  style={{ background: "var(--hud-accent)" }}
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        <main className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {cat === "trigger" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionTrigger")}</h2>
+              <p className="set-desc">选词之后用什么动作把浮层叫出来。</p>
+              <div className="set-radio-stack mb-2">
+                <Radio
+                  active={isDoubleControl}
+                  label={t("settingsTriggerDoubleControl")}
+                  hint={t("settingsTriggerDoubleControlHint")}
+                  onClick={() => apply({ trigger: "doubleControl" })}
                 />
+                <Radio
+                  active={!isDoubleControl}
+                  label={t("settingsTriggerHotkey")}
+                  hint={t("settingsHotkeyRule")}
+                  onClick={() => apply({ trigger: "hotkey" })}
+                />
+              </div>
+              <Row label={t("settingsTriggerCurrent")}>
+                <span className="set-cap">
+                  <span>{isDoubleControl ? "Ctrl" : (settings?.hotkey ?? "—")}</span>
+                  {isDoubleControl && <span>Ctrl</span>}
+                </span>
+                {recordButton("hud")}
+                {!isDoubleControl && (
+                  <button
+                    type="button"
+                    onClick={() => apply({ trigger: "doubleControl" })}
+                    className="set-btn"
+                  >
+                    {t("settingsTriggerResetDefault")}
+                  </button>
+                )}
+              </Row>
+            </>
+          )}
+
+          {cat === "capture" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionCapture")}</h2>
+              <p className="set-desc">决定双击时优先读选区，还是读光标下的词。</p>
+              <div className="set-radio-stack">
+                {CAPTURE_OPTIONS.map((option) => (
+                  <Radio
+                    key={option.value}
+                    active={settings?.captureMode === option.value}
+                    label={option.label}
+                    hint={option.hint}
+                    onClick={() => apply({ captureMode: option.value })}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {cat === "models" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionModels")}</h2>
+              <p className="set-desc">{t("settingsModelsHint")}</p>
+              <ModelRow
+                label={t("settingsModelOcr")}
+                ready={models?.ocrReady ?? false}
+                dir={models?.ocrDir ?? "—"}
+                onOpen={() => openDir("ocr")}
+              />
+              <ModelRow
+                label={t("settingsModelTts")}
+                ready={models?.ttsReady ?? false}
+                dir={models?.ttsDir ?? "—"}
+                onOpen={() => openDir("tts")}
+              />
+            </>
+          )}
+
+          {cat === "speech" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionSpeech")}</h2>
+              <p className="set-desc">{t("settingsSpeechSpeedHint")}</p>
+              <Row label={t("settingsSpeechSpeed")}>
+                <Range
+                  value={settings?.speechSpeed ?? 1}
+                  min={0.6}
+                  max={1.6}
+                  step={0.05}
+                  onCommit={(value) => apply({ speechSpeed: Number(value.toFixed(2)) })}
+                />
+                <span className="w-11 text-right font-mono text-[11.5px] tabular-nums text-[var(--hud-muted)]">
+                  {(settings?.speechSpeed ?? 1).toFixed(2)}×
+                </span>
+              </Row>
+              <Row label={t("settingsSpeakOriginal")}>
+                <Switch
+                  on={settings?.speakOriginal ?? true}
+                  label={t("settingsSpeakOriginal")}
+                  onChange={(on) => apply({ speakOriginal: on })}
+                />
+              </Row>
+              <Row label={t("settingsSpeakTranslation")}>
+                <Switch
+                  on={settings?.speakTranslation ?? true}
+                  label={t("settingsSpeakTranslation")}
+                  onChange={(on) => apply({ speakTranslation: on })}
+                />
+              </Row>
+            </>
+          )}
+
+          {cat === "ocr" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionOcr")}</h2>
+              <p className="set-desc">{t("settingsOcrToggleHint")}</p>
+              <Row label={t("settingsOcrToggle")}>
+                <Switch
+                  on={settings?.ocrHotkeyEnabled ?? true}
+                  label={t("settingsOcrToggle")}
+                  onChange={(on) => apply({ ocrHotkeyEnabled: on })}
+                />
+              </Row>
+              <Row label={t("settingsOcrHotkeyLabel")} hint={t("settingsOcrToggleOffHint")}>
+                <span className="set-cap">
+                  <span>{settings?.ocrHotkey ?? "—"}</span>
+                </span>
+                {recordButton("ocr")}
+              </Row>
+            </>
+          )}
+
+          {cat === "compare" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionReader")}</h2>
+              <p className="set-desc">{t("settingsReaderIntro")}</p>
+              <div className="set-radio-stack">
+                <Radio
+                  active={settings?.readerOpenMode !== "off"}
+                  label={t("settingsReaderHud")}
+                  hint={t("settingsReaderHudHint")}
+                  onClick={() => apply({ readerOpenMode: "hud" })}
+                />
+                <Radio
+                  active={settings?.readerOpenMode === "off"}
+                  label={t("settingsReaderOff")}
+                  hint={t("settingsReaderOffHint")}
+                  onClick={() => apply({ readerOpenMode: "off" })}
+                />
+              </div>
+            </>
+          )}
+
+          {cat === "translate" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionTranslate")}</h2>
+              <p className="set-desc">译文会落盘缓存，重启后重复段落直接命中。</p>
+              <div className="set-radio-stack mb-2">
+                <Radio
+                  active={settings?.translateProvider === "google"}
+                  label={t("settingsTranslateGoogle")}
+                  hint={t("settingsTranslateGoogleHint")}
+                  onClick={() => apply({ translateProvider: "google" })}
+                />
+                <Radio
+                  active={settings?.translateProvider === "openAi"}
+                  label={t("settingsTranslateOpenai")}
+                  hint={t("settingsOpenaiKeyHint")}
+                  onClick={() => apply({ translateProvider: "openAi" })}
+                />
+              </div>
+              {settings?.translateProvider === "openAi" && (
+                <div className="border-t border-[var(--hud-border-soft)] pt-1">
+                  <TextField
+                    label={t("settingsOpenaiBaseUrl")}
+                    value={settings.openaiBaseUrl}
+                    onCommit={(value) => apply({ openaiBaseUrl: value })}
+                  />
+                  <TextField
+                    label={t("settingsOpenaiKey")}
+                    value={settings.openaiApiKey}
+                    secret
+                    onCommit={(value) => apply({ openaiApiKey: value })}
+                  />
+                  <TextField
+                    label={t("settingsOpenaiModel")}
+                    value={settings.openaiModel}
+                    onCommit={(value) => apply({ openaiModel: value })}
+                  />
+                </div>
               )}
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[13px]">{t("settingsShowHints")}</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-[var(--hud-muted)]">
-                {t("settingsShowHintsHint")}
-              </span>
-            </span>
-          </button>
-        </section>
+              <Row label={t("settingsTargetLang")}>
+                <div className="set-seg">
+                  <button
+                    type="button"
+                    className={settings?.targetLang === "zh" ? "is-on" : ""}
+                    onClick={() => apply({ targetLang: "zh" })}
+                  >
+                    {t("settingsTargetZh")}
+                  </button>
+                  <button
+                    type="button"
+                    className={settings?.targetLang === "en" ? "is-on" : ""}
+                    onClick={() => apply({ targetLang: "en" })}
+                  >
+                    {t("settingsTargetEn")}
+                  </button>
+                </div>
+              </Row>
+            </>
+          )}
 
-        {/* ---- 性能 ---- */}
-        <section className="mt-5">
-          <h2 className="mb-2 text-[12px] font-medium tracking-wide text-[var(--hud-muted)]">
-            {t("settingsSectionPerf")}
-          </h2>
-          <div className="grid grid-cols-3 gap-2">
-            <Stat label={t("settingsStartup")} value={startup} />
-            <Stat label={t("settingsPresents")} value={presents} />
-            <Stat label={t("settingsLastPaint")} value={lastPaint} />
-          </div>
-        </section>
+          {cat === "card" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionCard")}</h2>
+              <p className="set-desc">选择词条卡里显示哪些区块。</p>
+              {SECTION_OPTIONS.map((option) => (
+                <Row key={option.key} label={option.label}>
+                  <Switch
+                    on={sections?.[option.key] ?? true}
+                    label={option.label}
+                    onChange={(on) =>
+                      apply({
+                        cardSections: {
+                          ...(sections ?? {
+                            phonetic: true,
+                            translation: true,
+                            definition: true,
+                            tags: true,
+                            exchange: true,
+                          }),
+                          [option.key]: on,
+                        },
+                      })
+                    }
+                  />
+                </Row>
+              ))}
+            </>
+          )}
 
-      </main>
+          {cat === "ui" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionLooks")}</h2>
+              <p className="set-desc">尺寸、配色与提示。</p>
+              <Row label={t("settingsSectionSize")} hint={t("settingsShowHintsHint")}>
+                <Range
+                  value={settings?.hudMaxHeight ?? 420}
+                  min={220}
+                  max={720}
+                  step={20}
+                  onCommit={(value) => apply({ hudMaxHeight: Math.round(value) })}
+                />
+                <span className="w-14 text-right font-mono text-[11.5px] tabular-nums text-[var(--hud-muted)]">
+                  {settings?.hudMaxHeight ?? 420} px
+                </span>
+              </Row>
+              <Row label={t("settingsShowHints")}>
+                <Switch
+                  on={settings?.showHints ?? true}
+                  label={t("settingsShowHints")}
+                  onChange={(on) => apply({ showHints: on })}
+                />
+              </Row>
+              <Row label={t("settingsSectionAccent")}>
+                <div className="set-seg">
+                  {(
+                    [
+                      { value: "clay" as Accent, label: t("settingsAccentClay"), dot: "#bd7454" },
+                      { value: "olive" as Accent, label: t("settingsAccentOlive"), dot: "#98a67d" },
+                    ] satisfies { value: Accent; label: string; dot: string }[]
+                  ).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={settings?.accent === option.value ? "is-on" : ""}
+                      onClick={() => apply({ accent: option.value })}
+                    >
+                      <span
+                        className="mr-1.5 inline-block size-2 rounded-full align-middle"
+                        style={{ background: option.dot }}
+                      />
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </Row>
+            </>
+          )}
+
+          {cat === "perf" && (
+            <>
+              <h2 className="set-h">{t("settingsSectionPerf")}</h2>
+              <p className="set-desc">最近一次的实测值；不含按需加载的模型权重。</p>
+              <div className="set-perf">
+                <div>
+                  <span>{t("settingsStartup")}</span>
+                  <b>{stats ? `${stats.startup_ms.toFixed(0)} ms` : t("noData")}</b>
+                </div>
+                <div>
+                  <span>{t("settingsLastPaint")}</span>
+                  <b>
+                    {latencyMs !== null
+                      ? `${latencyMs.toFixed(1)} ms`
+                      : stats?.last_first_paint_ms != null
+                        ? `${stats.last_first_paint_ms.toFixed(1)} ms`
+                        : t("noData")}
+                  </b>
+                </div>
+                <div>
+                  <span>{t("settingsPresents")}</span>
+                  <b>{stats ? String(stats.hud_presents) : t("noData")}</b>
+                </div>
+              </div>
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
+
+/** 设置窗口自己的控件样式（与浮层同一套令牌，圆角 6/8/12）。 */
+const SET_STYLES = `
+  .set-nav {
+    position: relative;
+    display: block;
+    width: 100%;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    padding: 6px 12px 6px 14px;
+    border: 0;
+    background: transparent;
+    color: var(--hud-muted);
+    cursor: pointer;
+  }
+  .set-nav:hover { color: var(--hud-text); background: var(--hud-raised); }
+  .set-nav.is-on { color: var(--hud-text); background: var(--hud-raised); }
+  .set-nav.is-on::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 5px;
+    bottom: 5px;
+    width: 2px;
+    background: var(--hud-accent);
+    border-radius: 0 1px 1px 0;
+  }
+  .set-h { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+  .set-desc { margin: 0 0 12px; font-size: 11.5px; line-height: 1.6; color: var(--hud-muted); }
+  .set-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--hud-border-soft);
+  }
+  .set-row:last-child { border-bottom: 0; }
+  .set-radio-stack { display: grid; gap: 6px; }
+  .set-radio {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    width: 100%;
+    font: inherit;
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid var(--hud-border-soft);
+    border-radius: var(--hud-r-ctl);
+    background: transparent;
+    color: var(--hud-text);
+    cursor: pointer;
+  }
+  .set-radio:hover { border-color: var(--hud-border); }
+  .set-radio.is-on { border-color: var(--hud-accent); background: var(--hud-raised); }
+  .set-radio-mark {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 1px solid var(--hud-border);
+    flex: none;
+    margin-top: 3px;
+  }
+  .set-radio.is-on .set-radio-mark { border: 3px solid var(--hud-accent); }
+  .set-switch {
+    position: relative;
+    width: 26px;
+    height: 14px;
+    border-radius: 7px;
+    border: 1px solid var(--hud-border);
+    background: var(--hud-raised);
+    cursor: pointer;
+    flex: none;
+  }
+  .set-switch::after {
+    content: "";
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--hud-muted);
+  }
+  .set-switch.is-on { background: var(--hud-accent-soft); border-color: var(--hud-accent); }
+  .set-switch.is-on::after { transform: translateX(12px); background: var(--hud-accent); }
+  .set-btn {
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 8px;
+    border: 1px solid var(--hud-border);
+    border-radius: var(--hud-r-ctl);
+    background: transparent;
+    color: var(--hud-muted);
+    cursor: pointer;
+  }
+  .set-btn:hover { color: var(--hud-text); border-color: var(--hud-muted); }
+  .set-ico {
+    font: inherit;
+    font-size: 11px;
+    width: 19px;
+    height: 19px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: var(--hud-r-ctl);
+    background: transparent;
+    color: var(--hud-faint);
+    cursor: pointer;
+  }
+  .set-ico:hover { color: var(--hud-text); border-color: var(--hud-border); }
+  .set-cap { display: inline-flex; gap: 3px; font-family: var(--hud-mono); font-size: 10.5px; }
+  .set-cap span {
+    padding: 1px 5px;
+    border: 1px solid var(--hud-border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--hud-raised);
+    color: var(--hud-muted);
+  }
+  .set-seg { display: inline-flex; border: 1px solid var(--hud-border); border-radius: var(--hud-r-ctl); overflow: hidden; }
+  .set-seg button {
+    font: inherit;
+    font-size: 11px;
+    padding: 3px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--hud-muted);
+    cursor: pointer;
+  }
+  .set-seg button + button { border-left: 1px solid var(--hud-border); }
+  .set-seg button.is-on { background: var(--hud-accent-soft); color: var(--hud-accent); }
+  .set-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+  .set-status i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .set-status.is-ok { color: var(--hud-ok); }
+  .set-status.is-off { color: var(--hud-faint); }
+  .set-range {
+    width: 168px;
+    accent-color: var(--hud-accent);
+    cursor: pointer;
+  }
+  .set-perf {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--hud-border-soft);
+    border-radius: var(--hud-r-ctl);
+    overflow: hidden;
+  }
+  .set-perf div { padding: 10px 12px; }
+  .set-perf div + div { border-left: 1px solid var(--hud-border-soft); }
+  .set-perf span { display: block; font-size: 10.5px; color: var(--hud-muted); }
+  .set-perf b {
+    display: block;
+    margin-top: 3px;
+    font-family: var(--hud-mono);
+    font-size: 15px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+`;
