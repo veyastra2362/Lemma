@@ -106,29 +106,28 @@ function Switch({
   );
 }
 
-function Radio({
-  active,
-  label,
-  hint,
-  onClick,
+/** 桌面风格下拉框：选项少了用不着占一排，选项多了也放得下。 */
+function Select<T extends string>({
+  value,
+  options,
+  onChange,
 }: {
-  active: boolean;
-  label: string;
-  hint?: string;
-  onClick: () => void;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (next: T) => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className={`set-radio ${active ? "is-on" : ""}`}>
-      <span className="set-radio-mark" />
-      <span className="min-w-0">
-        <span className="block text-[14px]">{label}</span>
-        {hint && (
-          <span className="mt-0.5 block text-[12.5px] leading-[1.55] text-[var(--hud-muted)]">
-            {hint}
-          </span>
-        )}
-      </span>
-    </button>
+    <select
+      className="set-select"
+      value={value}
+      onChange={(event) => onChange(event.target.value as T)}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -250,6 +249,12 @@ export function SettingsView() {
   const onScroll = useCallback(() => {
     const box = scrollRef.current;
     if (!box) {
+      return;
+    }
+    // 滚到底部时，最后几节永远到不了顶部；此时直接判定为最后一节，
+    // 否则"界面""性能基线"永远高亮不上（用户实测踩到）。
+    if (box.scrollTop + box.clientHeight >= box.scrollHeight - 4) {
+      setActive(NAV[NAV.length - 1]!.key);
       return;
     }
     const top = box.scrollTop + 24;
@@ -429,20 +434,23 @@ export function SettingsView() {
           <section id="set-trigger" className="mb-7">
               <h2 className="set-h">{t("settingsSectionTrigger")}</h2>
               <p className="set-desc">选词之后用什么动作把浮层叫出来。</p>
-              <div className="set-radio-stack">
-                <Radio
-                  active={isDoubleControl}
-                  label={t("settingsTriggerDoubleControl")}
-                  hint={t("settingsTriggerDoubleControlHint")}
-                  onClick={() => apply({ trigger: "doubleControl" })}
+              <Row
+                label={t("settingsTriggerMode")}
+                hint={
+                  isDoubleControl
+                    ? t("settingsTriggerDoubleControlHint")
+                    : t("settingsHotkeyRule")
+                }
+              >
+                <Select
+                  value={isDoubleControl ? "doubleControl" : "hotkey"}
+                  options={[
+                    { value: "doubleControl", label: t("settingsTriggerDoubleControl") },
+                    { value: "hotkey", label: t("settingsTriggerHotkey") },
+                  ]}
+                  onChange={(next) => apply({ trigger: next })}
                 />
-                <Radio
-                  active={!isDoubleControl}
-                  label={t("settingsTriggerHotkey")}
-                  hint={t("settingsHotkeyRule")}
-                  onClick={() => apply({ trigger: "hotkey" })}
-                />
-              </div>
+              </Row>
               <Row label={t("settingsTriggerCurrent")}>
                 <span className="set-cap">
                   <span>{isDoubleControl ? "Ctrl" : (settings?.hotkey ?? "—")}</span>
@@ -464,17 +472,21 @@ export function SettingsView() {
           <section id="set-capture" className="mb-7">
               <h2 className="set-h">{t("settingsSectionCapture")}</h2>
               <p className="set-desc">决定双击时优先读选区，还是读光标下的词。</p>
-              <div className="set-radio-stack">
-                {CAPTURE_OPTIONS.map((option) => (
-                  <Radio
-                    key={option.value}
-                    active={settings?.captureMode === option.value}
-                    label={option.label}
-                    hint={option.hint}
-                    onClick={() => apply({ captureMode: option.value })}
-                  />
-                ))}
-              </div>
+              <Row
+                label={t("settingsCaptureMode")}
+                hint={
+                  CAPTURE_OPTIONS.find((item) => item.value === settings?.captureMode)?.hint
+                }
+              >
+                <Select
+                  value={(settings?.captureMode ?? "auto") as CaptureMode}
+                  options={CAPTURE_OPTIONS.map((item) => ({
+                    value: item.value,
+                    label: item.label,
+                  }))}
+                  onChange={(next) => apply({ captureMode: next })}
+                />
+              </Row>
           </section>
 
           <section id="set-models" className="mb-7">
@@ -546,39 +558,45 @@ export function SettingsView() {
           <section id="set-compare" className="mb-7">
               <h2 className="set-h">{t("settingsSectionReader")}</h2>
               <p className="set-desc">{t("settingsReaderIntro")}</p>
-              <div className="set-radio-stack">
-                <Radio
-                  active={settings?.readerOpenMode !== "off"}
-                  label={t("settingsReaderHud")}
-                  hint={t("settingsReaderHudHint")}
-                  onClick={() => apply({ readerOpenMode: "hud" })}
+              <Row
+                label={t("settingsCompareMode")}
+                hint={
+                  settings?.readerOpenMode === "off"
+                    ? t("settingsReaderOffHint")
+                    : t("settingsReaderHudHint")
+                }
+              >
+                <Select
+                  value={settings?.readerOpenMode === "off" ? "off" : "hud"}
+                  options={[
+                    { value: "hud", label: t("settingsReaderHud") },
+                    { value: "off", label: t("settingsReaderOff") },
+                  ]}
+                  onChange={(next) => apply({ readerOpenMode: next })}
                 />
-                <Radio
-                  active={settings?.readerOpenMode === "off"}
-                  label={t("settingsReaderOff")}
-                  hint={t("settingsReaderOffHint")}
-                  onClick={() => apply({ readerOpenMode: "off" })}
-                />
-              </div>
+              </Row>
           </section>
 
           <section id="set-translate" className="mb-7">
               <h2 className="set-h">{t("settingsSectionTranslate")}</h2>
               <p className="set-desc">译文会落盘缓存，重启后重复段落直接命中。</p>
-              <div className="set-radio-stack">
-                <Radio
-                  active={settings?.translateProvider === "google"}
-                  label={t("settingsTranslateGoogle")}
-                  hint={t("settingsTranslateGoogleHint")}
-                  onClick={() => apply({ translateProvider: "google" })}
+              <Row
+                label={t("settingsTranslateService")}
+                hint={
+                  settings?.translateProvider === "openAi"
+                    ? t("settingsOpenaiKeyHint")
+                    : t("settingsTranslateGoogleHint")
+                }
+              >
+                <Select
+                  value={settings?.translateProvider ?? "google"}
+                  options={[
+                    { value: "google", label: t("settingsTranslateGoogle") },
+                    { value: "openAi", label: t("settingsTranslateOpenai") },
+                  ]}
+                  onChange={(next) => apply({ translateProvider: next })}
                 />
-                <Radio
-                  active={settings?.translateProvider === "openAi"}
-                  label={t("settingsTranslateOpenai")}
-                  hint={t("settingsOpenaiKeyHint")}
-                  onClick={() => apply({ translateProvider: "openAi" })}
-                />
-              </div>
+              </Row>
               {settings?.translateProvider === "openAi" && (
                 <div className="border-t border-[var(--hud-border-soft)] pt-1">
                   <TextField
@@ -649,7 +667,10 @@ export function SettingsView() {
           <section id="set-ui" className="mb-7">
               <h2 className="set-h">{t("settingsSectionLooks")}</h2>
               <p className="set-desc">尺寸、配色与提示。</p>
-              <Row label={t("settingsSectionSize")} hint={t("settingsShowHintsHint")}>
+              <Row
+                label={t("settingsSectionSize")}
+                hint="内容超出这个高度后，浮层内部滚动。"
+              >
                 <Range
                   value={settings?.hudMaxHeight ?? 420}
                   min={220}
@@ -683,7 +704,7 @@ export function SettingsView() {
                       onClick={() => apply({ accent: option.value })}
                     >
                       <span
-                        className="mr-1.5 inline-block size-2 rounded-full align-middle"
+                        className="mr-1.5 inline-block size-2 shrink-0 rounded-full"
                         style={{ background: option.dot }}
                       />
                       {option.label}
@@ -760,46 +781,6 @@ const SET_STYLES = `
     border-bottom: 1px solid var(--hud-border-soft);
   }
   .set-row:last-child { border-bottom: 0; }
-  /* 选项不再各占一个盒子：右侧整体是连续列表，行与行之间只有分隔线 */
-  .set-radio-stack { display: block; }
-  .set-radio {
-    position: relative;
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    width: 100%;
-    font: inherit;
-    text-align: left;
-    padding: 10px 2px 10px 12px;
-    border: 0;
-    border-bottom: 1px solid var(--hud-border-soft);
-    border-radius: 0;
-    background: transparent;
-    color: var(--hud-text);
-    cursor: pointer;
-  }
-  .set-radio:last-child { border-bottom: 0; }
-  .set-radio:hover { color: var(--hud-text); background: var(--hud-raised); }
-  .set-radio.is-on { background: var(--hud-raised); }
-  .set-radio.is-on::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 8px;
-    bottom: 8px;
-    width: 2px;
-    background: var(--hud-accent);
-    border-radius: 0 1px 1px 0;
-  }
-  .set-radio-mark {
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
-    border: 1px solid var(--hud-border);
-    flex: none;
-    margin-top: 3px;
-  }
-  .set-radio.is-on .set-radio-mark { border: 3px solid var(--hud-accent); }
   .set-switch {
     position: relative;
     width: 26px;
@@ -823,6 +804,26 @@ const SET_STYLES = `
   }
   .set-switch.is-on { background: var(--hud-accent-soft); border-color: var(--hud-accent); }
   .set-switch.is-on::after { transform: translateX(12px); background: var(--hud-accent); }
+  .set-select {
+    font: inherit;
+    font-size: 13px;
+    padding: 3px 26px 3px 8px;
+    border: 1px solid var(--hud-border);
+    border-radius: var(--hud-r-ctl);
+    background-color: var(--hud-raised);
+    color: var(--hud-text);
+    cursor: pointer;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--hud-muted) 50%),
+      linear-gradient(135deg, var(--hud-muted) 50%, transparent 50%);
+    background-position: calc(100% - 12px) calc(50% - 1px), calc(100% - 8px) calc(50% - 1px);
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+  }
+  .set-select:hover { border-color: var(--hud-muted); }
+  .set-select:focus-visible { outline: 1px solid var(--hud-accent); outline-offset: 1px; }
+  .set-select option { background: var(--hud-surface); color: var(--hud-text); }
+
   .set-btn {
     font: inherit;
     font-size: 12.5px;
