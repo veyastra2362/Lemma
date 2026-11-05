@@ -533,7 +533,7 @@ export function ShellView() {
         ) : (
           <>
             {collapsedUntil > 0 && (
-              <p className="border-b border-white/6 pb-1 text-[11px] text-[var(--hud-muted)]/60">
+              <p className="border-b border-[var(--hud-border-soft)] pb-1 text-[11px] text-[var(--hud-faint)]">
                 {tDeckCollapsed(collapsedUntil)}
               </p>
             )}

@@ -516,9 +516,11 @@ export function ReaderView() {
               type="button"
               key={`${index}-${token.value}`}
               onClick={() => pushWord(token.value)}
-              className={`rounded-sm underline decoration-dotted underline-offset-2 transition hover:bg-white/10 hover:decoration-[var(--hud-accent)] ${
-                muted ? "decoration-white/15" : "decoration-white/25"
-              } ${isSpoken ? "bg-[var(--hud-accent)]/35 text-white no-underline" : ""}`}
+              className={`border-b border-dashed pb-px ${
+                muted ? "border-[var(--hud-border)]" : "border-[var(--hud-border)]"
+              } hover:border-[var(--hud-muted)] hover:text-[var(--hud-text)] ${
+                isSpoken ? "border-solid border-[var(--hud-accent)] bg-[var(--hud-accent-soft)]" : ""
+              }`}
             >
               {token.value}
             </button>
@@ -711,7 +713,7 @@ export function ReaderView() {
             // 用 width 而不是 maxWidth：父容器是 w-fit，maxWidth 撑不大它。
             style={{ width: content!.image!.width * 2, maxWidth: "100%" }}
           >
-            <img src={imageSrc} alt="" className="w-full rounded-lg opacity-70" />
+            <img src={imageSrc} alt="" className="w-full rounded-[var(--hud-r-ctl)] opacity-70" />
 
             {/* 原位格子：只放精简译文，不裁字也不盖住邻框（overflow 里 line-clamp 兜底） */}
             {content!.imageBlocks.map((block, index) => (
@@ -823,7 +825,7 @@ export function ReaderView() {
         </div>
       )}
       {current && (
-        <footer className="shrink-0 border-t border-white/8 bg-black/20 px-4 py-2">
+        <footer className="shrink-0 border-t border-[var(--hud-border-soft)] bg-[var(--hud-raised)] px-4 py-2">
           <div className="flex items-center gap-2">
             <span className="text-[12px] text-[var(--hud-text)]">{current.word}</span>
             {current.entry?.phonetic && (
@@ -839,7 +841,7 @@ export function ReaderView() {
             <button
               type="button"
               onClick={() => setLookup(null)}
-              className={`${showHints ? "ml-2" : "ml-auto"} text-[11px] text-[var(--hud-muted)] hover:text-white`}
+              className={`${showHints ? "ml-2" : "ml-auto"} text-[11px] text-[var(--hud-muted)] hover:text-[var(--hud-text)]`}
             >
               {t("readerLookupClose")}
             </button>

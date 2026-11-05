@@ -400,29 +400,22 @@ pub fn present_region_select_on_main<R: Runtime>(app: &AppHandle<R>) {
     });
 }
 
-/// 关掉所有框选层（截屏前必须先藏起来，否则会把自己也截进去）。
+/// 关掉所有框选层（截屏前必须先收起来，否则会把自己也截进去）。
+///
+/// **销毁而不是隐藏**：每个框选层都是一个独立 WebView2 渲染进程，隐藏后实测常驻约 74 MB
+/// （见 `docs/PERF.md` 的"按状态的内存占用"）。框选本来就不在毫秒级路径上——
+/// 用户要手动拖框，下次 `Alt+S` 重建多花几十毫秒感知不到，省下 74 MB 更划算。
 pub fn hide_region_select<R: Runtime>(app: &AppHandle<R>) {
     for window in region_windows(app) {
         let _ = window.hide();
-        PlatformWindow::new(window).force_hide();
+        PlatformWindow::new(window.clone()).force_hide();
+        let _ = window.close();
     }
 }
 
-fn wire_region_close<R: Runtime>(window: &WebviewWindow<R>) {
-    static WIRED: AtomicBool = AtomicBool::new(false);
-    if WIRED.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    let win = window.clone();
-    window.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            let _ = win.hide();
-            PlatformWindow::new(win.clone()).force_hide();
-        }
-    });
-}
-
+/// 框选层不再拦 close：用完直接销毁（见 `hide_region_select` 的说明）。
+/// 用户按 Alt+F4 关掉也只是销毁，下次 `Alt+S` 会重建。
+fn wire_region_close<R: Runtime>(_window: &WebviewWindow<R>) {}
 /// 显示双栏窗口。与设置窗口同样的两步显示 + 懒创建。
 pub fn present_reader<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     // 先按配置建；配置因为任何原因拿不到（编译进二进制的 conf 与代码不同步等）时，
