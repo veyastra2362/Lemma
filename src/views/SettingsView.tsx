@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t } from "../i18n";
@@ -242,7 +242,26 @@ export function SettingsView() {
   const settings = useAppStore((state) => state.settings);
   const setSettings = useAppStore((state) => state.setSettings);
 
-  const [cat, setCat] = useState<Category>("trigger");
+  /** 左侧导航高亮项：跟着右侧滚动位置走，不是"当前显示哪一页"。 */
+  const [active, setActive] = useState<Category>("trigger");
+  const scrollRef = useRef<HTMLElement | null>(null);
+
+  /** 右侧滚到哪，左边就亮哪一项。 */
+  const onScroll = useCallback(() => {
+    const box = scrollRef.current;
+    if (!box) {
+      return;
+    }
+    const top = box.scrollTop + 24;
+    let current: Category = NAV[0]!.key;
+    for (const item of NAV) {
+      const section = document.getElementById(`set-${item.key}`);
+      if (section && section.offsetTop - box.offsetTop <= top) {
+        current = item.key;
+      }
+    }
+    setActive(current);
+  }, []);
   const [recordingTarget, setRecordingTarget] = useState<null | "hud" | "reader" | "ocr">(null);
   const [models, setModels] = useState<ModelStatus | null>(null);
   const recording = recordingTarget !== null;
@@ -390,17 +409,24 @@ export function SettingsView() {
             <button
               key={item.key}
               type="button"
-              onClick={() => setCat(item.key)}
-              className={`set-nav ${cat === item.key ? "is-on" : ""}`}
+              onClick={() => {
+                document
+                  .getElementById(`set-${item.key}`)
+                  ?.scrollIntoView({ block: "start", behavior: "smooth" });
+              }}
+              className={`set-nav ${active === item.key ? "is-on" : ""}`}
             >
               {item.label}
             </button>
           ))}
         </nav>
 
-        <main className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {cat === "trigger" && (
-            <>
+                <main
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+        >
+          <section id="set-trigger" className="mb-7">
               <h2 className="set-h">{t("settingsSectionTrigger")}</h2>
               <p className="set-desc">选词之后用什么动作把浮层叫出来。</p>
               <div className="set-radio-stack">
@@ -433,11 +459,9 @@ export function SettingsView() {
                   </button>
                 )}
               </Row>
-            </>
-          )}
+          </section>
 
-          {cat === "capture" && (
-            <>
+          <section id="set-capture" className="mb-7">
               <h2 className="set-h">{t("settingsSectionCapture")}</h2>
               <p className="set-desc">决定双击时优先读选区，还是读光标下的词。</p>
               <div className="set-radio-stack">
@@ -451,11 +475,9 @@ export function SettingsView() {
                   />
                 ))}
               </div>
-            </>
-          )}
+          </section>
 
-          {cat === "models" && (
-            <>
+          <section id="set-models" className="mb-7">
               <h2 className="set-h">{t("settingsSectionModels")}</h2>
               <p className="set-desc">{t("settingsModelsHint")}</p>
               <ModelRow
@@ -470,11 +492,9 @@ export function SettingsView() {
                 dir={models?.ttsDir ?? "—"}
                 onOpen={() => openDir("tts")}
               />
-            </>
-          )}
+          </section>
 
-          {cat === "speech" && (
-            <>
+          <section id="set-speech" className="mb-7">
               <h2 className="set-h">{t("settingsSectionSpeech")}</h2>
               <p className="set-desc">{t("settingsSpeechSpeedHint")}</p>
               <Row label={t("settingsSpeechSpeed")}>
@@ -503,11 +523,9 @@ export function SettingsView() {
                   onChange={(on) => apply({ speakTranslation: on })}
                 />
               </Row>
-            </>
-          )}
+          </section>
 
-          {cat === "ocr" && (
-            <>
+          <section id="set-ocr" className="mb-7">
               <h2 className="set-h">{t("settingsSectionOcr")}</h2>
               <p className="set-desc">{t("settingsOcrToggleHint")}</p>
               <Row label={t("settingsOcrToggle")}>
@@ -523,11 +541,9 @@ export function SettingsView() {
                 </span>
                 {recordButton("ocr")}
               </Row>
-            </>
-          )}
+          </section>
 
-          {cat === "compare" && (
-            <>
+          <section id="set-compare" className="mb-7">
               <h2 className="set-h">{t("settingsSectionReader")}</h2>
               <p className="set-desc">{t("settingsReaderIntro")}</p>
               <div className="set-radio-stack">
@@ -544,11 +560,9 @@ export function SettingsView() {
                   onClick={() => apply({ readerOpenMode: "off" })}
                 />
               </div>
-            </>
-          )}
+          </section>
 
-          {cat === "translate" && (
-            <>
+          <section id="set-translate" className="mb-7">
               <h2 className="set-h">{t("settingsSectionTranslate")}</h2>
               <p className="set-desc">译文会落盘缓存，重启后重复段落直接命中。</p>
               <div className="set-radio-stack">
@@ -603,11 +617,9 @@ export function SettingsView() {
                   </button>
                 </div>
               </Row>
-            </>
-          )}
+          </section>
 
-          {cat === "card" && (
-            <>
+          <section id="set-card" className="mb-7">
               <h2 className="set-h">{t("settingsSectionCard")}</h2>
               <p className="set-desc">选择词条卡里显示哪些区块。</p>
               {SECTION_OPTIONS.map((option) => (
@@ -632,11 +644,9 @@ export function SettingsView() {
                   />
                 </Row>
               ))}
-            </>
-          )}
+          </section>
 
-          {cat === "ui" && (
-            <>
+          <section id="set-ui" className="mb-7">
               <h2 className="set-h">{t("settingsSectionLooks")}</h2>
               <p className="set-desc">尺寸、配色与提示。</p>
               <Row label={t("settingsSectionSize")} hint={t("settingsShowHintsHint")}>
@@ -681,11 +691,9 @@ export function SettingsView() {
                   ))}
                 </div>
               </Row>
-            </>
-          )}
+          </section>
 
-          {cat === "perf" && (
-            <>
+          <section id="set-perf" className="mb-7">
               <h2 className="set-h">{t("settingsSectionPerf")}</h2>
               <p className="set-desc">最近一次的实测值；不含按需加载的模型权重。</p>
               <div className="set-perf">
@@ -708,8 +716,7 @@ export function SettingsView() {
                   <b>{stats ? String(stats.hud_presents) : t("noData")}</b>
                 </div>
               </div>
-            </>
-          )}
+          </section>
         </main>
       </div>
     </div>
