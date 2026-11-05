@@ -24,8 +24,9 @@ const MAX_MOUNTED_CARDS = 3;
 const HUD_CTL_STYLES = `
   .hud-btn {
     font: inherit;
-    font-size: 11px;
-    padding: 2px 8px;
+    font-size: 10.5px;
+    line-height: 1.45;
+    padding: 1px 7px;
     border: 1px solid var(--hud-border);
     border-radius: var(--hud-r-ctl);
     background: transparent;
@@ -150,7 +151,7 @@ function CardView({
             {card.original}
           </p>
         )}
-        <div className="mt-2 flex items-center gap-2 border-t border-[var(--hud-border-soft)] pt-2">
+        <div className="mt-1.5 flex items-center gap-2 border-t border-[var(--hud-border-soft)] pt-1.5">
           <p className="font-mono text-[10.5px] text-[var(--hud-faint)] tabular-nums">
             {translation.status === "done" &&
               `${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
@@ -203,21 +204,18 @@ function CardView({
 
   return (
     <div className="pb-1">
-      <div className="flex items-baseline gap-2">
-        <p className="min-w-0 flex-1 break-words font-[family-name:var(--hud-serif)] text-[19px] leading-tight">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <p className="min-w-0 break-words font-[family-name:var(--hud-serif)] text-[19px] leading-tight">
           {card.word}
         </p>
-        {entry?.pos && (
-          <span className="shrink-0 border border-[var(--hud-border-soft)] px-1 text-[10.5px] text-[var(--hud-muted)]">
-            {entry.pos}
-          </span>
-        )}
-      </div>
-
-      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         {entry && sections?.phonetic && entry.phonetic && (
           <span className="font-mono text-[11px] text-[var(--hud-faint)]">
             /{entry.phonetic}/
+          </span>
+        )}
+        {entry?.pos && (
+          <span className="shrink-0 border border-[var(--hud-border-soft)] px-1 text-[10.5px] text-[var(--hud-muted)]">
+            {entry.pos}
           </span>
         )}
       </div>

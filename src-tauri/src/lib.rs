@@ -218,9 +218,19 @@ pub fn run() {
                 let handle = handle.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(1800)).await;
-                    let _ = crate::core::selection::store_ocr(text.clone(), "Chrome".to_string(), 12.0);
+                    let mut capture =
+                        crate::core::selection::store_ocr(text.clone(), "Chrome".to_string(), 12.0);
+                    // 单个词就补上词库释义：这样冒烟能造出「词条卡」而不只是「句子卡」
+                    if !capture.needs_translation {
+                        capture.entry = crate::core::dict::lookup_any(&text);
+                        // 改写后要重新入槽：store_ocr 存的已经是旧的那一份
+                        crate::core::selection::store_capture(&capture);
+                    }
                     shell::present(&handle);
-                    logs::line(format!("hud smoke card: {text}"));
+                    logs::line(format!(
+                        "hud smoke card: {text}（{}）",
+                        if capture.entry.is_some() { "词条卡" } else { "句子卡" }
+                    ));
                 });
             }
             // 窗口截图冒烟：LEMMA_CAPTURE_WINDOW_SMOKE=settings|reader|shell

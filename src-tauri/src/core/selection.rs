@@ -129,6 +129,13 @@ pub fn store_ocr(text: String, app: String, elapsed_ms: f64) -> Capture {
     capture
 }
 
+/// 把一张现成的 `Capture` 放进"最近一次取词"槽。
+///
+/// 冒烟与测试用：`store_ocr` 存的是它自己构造的那一份，之后再改字段不会生效。
+pub fn store_capture(capture: &Capture) {
+    store(capture);
+}
+
 /// 中文取词：分词出候选。
 ///
 /// 返回 `(用于查词的文本, 候选列表)`：
