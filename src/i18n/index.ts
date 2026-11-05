@@ -43,6 +43,7 @@ const zhCN = {
   readerEmpty: "没有可对照的内容",
   readerModeSide: "并排",
   readerModeOverlay: "覆盖",
+  retry: "重试",
   speakStart: "朗读",
   speakOriginal: "朗读原文",
   speakTranslation: "朗读译文",

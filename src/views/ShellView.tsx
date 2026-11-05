@@ -108,6 +108,7 @@ function CardView({
   onSpeak,
   speakOriginal,
   speakTranslation,
+  onRetry,
 }: {
   card: Card;
   sections: CardSections | null;
@@ -121,6 +122,8 @@ function CardView({
   speakOriginal: boolean;
   /** 是否显示「朗读译文」（设置里可关）。 */
   speakTranslation: boolean;
+  /** 翻译失败后重试：把状态复位成 idle，翻译 effect 会再跑一次。 */
+  onRetry: () => void;
 }) {
   const entry = card.entry;
 
@@ -140,12 +143,18 @@ function CardView({
           </p>
         )}
         {translation.status === "error" && (
-          <>
-            <p className="text-[13px] text-[var(--hud-faint)]">{t("translateFailed")}</p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--hud-err)]">
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-[13px] text-[var(--hud-faint)]">{t("translateFailed")}</p>
+              <button type="button" onClick={onRetry} className="hud-btn">
+                {t("retry")}
+              </button>
+            </div>
+            {/* break-words + 隐藏横向溢出：错误里常带长 URL，会把卡片撑出横向滚动条 */}
+            <p className="mt-0.5 max-h-24 overflow-y-auto break-words text-[11px] leading-relaxed text-[var(--hud-err)]">
               {translation.error}
             </p>
-          </>
+          </div>
         )}
         {!collapsed && (
           <p className="mt-1.5 line-clamp-3 text-[12px] leading-[1.6] text-[var(--hud-muted)]">
@@ -500,7 +509,10 @@ export function ShellView() {
             }}
             className="hud-ico"
           >
-            ⚙
+            <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3">
+  <circle cx="8" cy="8" r="2.4" />
+  <path d="M8 1.4v1.6M8 13v1.6M1.4 8h1.6M13 8h1.6M3.3 3.3l1.1 1.1M11.6 11.6l1.1 1.1M12.7 3.3l-1.1 1.1M4.4 11.6l-1.1 1.1" stroke-linecap="round" />
+</svg>
           </button>
           <button
             type="button"
@@ -511,7 +523,9 @@ export function ShellView() {
             }}
             className="hud-ico"
           >
-            ✕
+            <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+  <path d="M2.5 2.5 L9.5 9.5 M9.5 2.5 L2.5 9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+</svg>
           </button>
         </span>
       </header>
@@ -539,7 +553,7 @@ export function ShellView() {
 
       {/* 量高度的必须是内层"内容"div：外层是滚动容器，内容不足时它的
           scrollHeight 等于容器高度，会让"算高度 → 改窗口 → 再算"形成自增循环。 */}
-      <main className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-1">
+      <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-3 pb-1">
         <div ref={contentRef}>
         {cards.length === 0 ? (
           <p className="text-[12px] leading-relaxed text-[var(--hud-muted)]">
@@ -570,6 +584,7 @@ export function ShellView() {
                   onSpeak={speechReady ? speak : null}
                   speakOriginal={settings?.speakOriginal ?? true}
                   speakTranslation={settings?.speakTranslation ?? true}
+                  onRetry={() => setTranslation(card.id, { status: "idle" })}
                 />
               </div>
             ))}

@@ -139,7 +139,21 @@ pub async fn run_region_ocr(
     height: u32,
 ) -> Result<crate::core::selection::Capture, String> {
     crate::core::shell::hide_region_select(&app);
-    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+
+    // 截屏前必须确认框选层**真的不在了**：只 sleep 固定时长不可靠——
+    // 销毁是异步的，窗口还在时会把「正在识别…」一起截进去（用户实测遇到过）。
+    for _ in 0..40 {
+        if !crate::core::shell::region_select_visible(&app) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    // 再给合成器一帧时间把隐藏生效
+    tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+    crate::core::logs::line(format!(
+        "region ocr: overlay still visible={}",
+        crate::core::shell::region_select_visible(&app) as u8
+    ));
 
     let capture = run_region_capture(x, y, width, height)?;
     crate::core::shell::present(&app);

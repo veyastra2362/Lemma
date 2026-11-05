@@ -389,6 +389,13 @@ fn region_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<WebviewWindow<R>> {
         .collect()
 }
 
+/// 框选层是否还有可见窗口（截屏前用来确认遮罩已经撤掉）。
+pub fn region_select_visible<R: Runtime>(app: &AppHandle<R>) -> bool {
+    region_windows(app)
+        .into_iter()
+        .any(|window| window.is_visible().unwrap_or(false))
+}
+
 /// 从任意线程打开框选层。
 pub fn present_region_select_on_main<R: Runtime>(app: &AppHandle<R>) {
     let runner = app.clone();
