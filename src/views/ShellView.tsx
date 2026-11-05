@@ -462,7 +462,6 @@ export function ShellView() {
       <style>{HUD_CTL_STYLES}</style>
       {/* 标题栏只放"这条信息从哪来、多快"，开发用的性能与标语挪去日志 */}
       <header className="flex shrink-0 items-center gap-2 border-b border-[var(--hud-border-soft)] px-3 py-1.5">
-        <span className="size-1.5 shrink-0 rounded-full" style={{ background: "var(--hud-accent)" }} />
         <span className="text-[11.5px] text-[var(--hud-muted)]">
           {rootCard?.source ?? t("appName")}
         </span>
