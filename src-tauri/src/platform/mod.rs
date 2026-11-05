@@ -129,3 +129,11 @@ pub fn attach_parent_console() {
 pub fn restore_clipboard(previous: Option<&str>, after_seq: u32) {
     backend::restore_clipboard(previous, after_seq)
 }
+/// 等桌面合成器真正完成一帧。
+///
+/// 隐藏窗口之后立刻 `BitBlt` 会拿到**旧**的屏幕内容（合成是异步的），
+/// 于是框选层的遮罩/提示会被截进 OCR 图片里（用户实测遇到过）。
+/// `DwmFlush` 会阻塞到下一次合成完成，比 sleep 固定时长可靠。
+pub fn flush_compositor() {
+    backend::flush_compositor();
+}

@@ -148,8 +148,10 @@ pub async fn run_region_ocr(
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
-    // 再给合成器一帧时间把隐藏生效
-    tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+    // 关键：等合成器**真正**画完一帧。只 sleep 不可靠——BitBlt 可能拿到旧内容，
+    // 于是把遮罩/提示一起截进 OCR 图里（用户实测遇到过两次）。
+    crate::platform::flush_compositor();
+    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
     crate::core::logs::line(format!(
         "region ocr: overlay still visible={}",
         crate::core::shell::region_select_visible(&app) as u8

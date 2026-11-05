@@ -152,12 +152,8 @@ export function RegionSelectView() {
         </div>
       )}
 
-      {busy && (
-        <div className="rg-busy">
-          <span className="rg-spinner" aria-hidden="true" />
-          <span>{t("regionBusy")}</span>
-        </div>
-      )}
+      {/* 「正在识别…」已移除：整个过程只有 100–300ms，一闪而过反而干扰视线；
+          截屏前也已经 flush 合成器，不会再把这个提示截进图里。 */}
 
       {error && (
         <div className="rg-error">

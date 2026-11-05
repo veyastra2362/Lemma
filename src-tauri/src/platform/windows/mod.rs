@@ -89,3 +89,9 @@ pub fn virtual_screen_bounds() -> Option<crate::platform::placement::Rect> {
         crate::platform::placement::Size { width, height },
     ))
 }
+/// 等 DWM 合成一帧（见 `platform::flush_compositor` 的说明）。
+pub fn flush_compositor() {
+    use windows::Win32::Graphics::Dwm::DwmFlush;
+    // 失败也没关系：调用方随后还有一次截屏，最坏退回旧行为
+    let _ = unsafe { DwmFlush() };
+}
