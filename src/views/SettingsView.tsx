@@ -403,7 +403,7 @@ export function SettingsView() {
             <>
               <h2 className="set-h">{t("settingsSectionTrigger")}</h2>
               <p className="set-desc">选词之后用什么动作把浮层叫出来。</p>
-              <div className="set-radio-stack mb-2">
+              <div className="set-radio-stack">
                 <Radio
                   active={isDoubleControl}
                   label={t("settingsTriggerDoubleControl")}
@@ -551,7 +551,7 @@ export function SettingsView() {
             <>
               <h2 className="set-h">{t("settingsSectionTranslate")}</h2>
               <p className="set-desc">译文会落盘缓存，重启后重复段落直接命中。</p>
-              <div className="set-radio-stack mb-2">
+              <div className="set-radio-stack">
                 <Radio
                   active={settings?.translateProvider === "google"}
                   label={t("settingsTranslateGoogle")}
@@ -753,23 +753,37 @@ const SET_STYLES = `
     border-bottom: 1px solid var(--hud-border-soft);
   }
   .set-row:last-child { border-bottom: 0; }
-  .set-radio-stack { display: grid; gap: 6px; }
+  /* 选项不再各占一个盒子：右侧整体是连续列表，行与行之间只有分隔线 */
+  .set-radio-stack { display: block; }
   .set-radio {
+    position: relative;
     display: flex;
     align-items: flex-start;
-    gap: 9px;
+    gap: 10px;
     width: 100%;
     font: inherit;
     text-align: left;
-    padding: 8px 10px;
-    border: 1px solid var(--hud-border-soft);
-    border-radius: var(--hud-r-ctl);
+    padding: 10px 2px 10px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--hud-border-soft);
+    border-radius: 0;
     background: transparent;
     color: var(--hud-text);
     cursor: pointer;
   }
-  .set-radio:hover { border-color: var(--hud-border); }
-  .set-radio.is-on { border-color: var(--hud-accent); background: var(--hud-raised); }
+  .set-radio:last-child { border-bottom: 0; }
+  .set-radio:hover { color: var(--hud-text); background: var(--hud-raised); }
+  .set-radio.is-on { background: var(--hud-raised); }
+  .set-radio.is-on::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: var(--hud-accent);
+    border-radius: 0 1px 1px 0;
+  }
   .set-radio-mark {
     width: 11px;
     height: 11px;
