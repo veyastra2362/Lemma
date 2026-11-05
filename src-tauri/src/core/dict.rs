@@ -462,39 +462,50 @@ impl DictStore {
     /// 做成方法而不是只用全局实例：CLI 已经持有自己的 `DictStore`，
     /// 再走全局会因为 redb 独占锁而拿不到实例（踩过）。
     pub fn lookup_any(&self, word: &str) -> Option<Entry> {
-        let store = self;
+        self.lookup_any_with(word, true)
+    }
+
+    /// 查一个词。`zh_defs` 决定**中文词**怎么显示：
+    ///
+    /// - `false`：按老行为——中文词显示 CC-CEDICT 的英文 gloss（等于"翻译成英文"）；
+    /// - `true`：中文词显示汉语词典的中文解释，CEDICT 的英文 gloss 退到"英文释义"栏；
+    ///   没装汉语词典时自动退回英文，不会显示空卡片。
+    ///
+    /// 英文词不受这个开关影响：ECDICT 天生就是"中文释义 + 英文释义"两栏。
+    pub fn lookup_any_with(&self, word: &str, zh_defs: bool) -> Option<Entry> {
         let has_cjk = word.chars().any(crate::core::segment::is_cjk);
-        if has_cjk {
-            let english = store.get_zh(word).ok().flatten();
-            let chinese = store.get_zh_def(word).ok().flatten();
-            match (english, chinese) {
-                (Some(mut entry), Some(def)) => {
-                    // 汉语词典的解释是"中文释义"，CEDICT 的英文释义挪到"英文释义"栏——
-                    // 原来两份数据共用一个字段，中文词会显示成英文（用户指出过）。
-                    if !def.definition.is_empty() {
-                        entry.definition = if entry.translation.is_empty() {
-                            entry.definition
-                        } else {
-                            entry.translation
-                        };
-                        entry.translation = def.definition;
-                    }
-                    if entry.phonetic.is_empty() && !def.pinyin.is_empty() {
-                        entry.phonetic = def.pinyin;
-                    }
-                    Some(entry)
+        if !has_cjk {
+            return self.get(word).ok().flatten();
+        }
+
+        let english = self.get_zh(word).ok().flatten();
+        if !zh_defs {
+            // 关闭中文释义：就是"中文 → 英文"，与装词典前完全一致
+            return english.or_else(|| self.get(word).ok().flatten());
+        }
+
+        match (english, self.get_zh_def(word).ok().flatten()) {
+            (Some(mut entry), Some(def)) if !def.definition.is_empty() => {
+                // 英文 gloss 挪到"英文释义"栏，中文解释放主栏
+                entry.definition = entry.translation;
+                entry.translation = def.definition;
+                if entry.phonetic.is_empty() && !def.pinyin.is_empty() {
+                    entry.phonetic = def.pinyin;
                 }
-                (Some(entry), None) => Some(entry),
-                (None, Some(def)) => Some(Entry {
-                    word: word.to_string(),
-                    phonetic: def.pinyin,
-                    translation: def.definition,
-                    ..Default::default()
-                }),
-                (None, None) => store.get(word).ok().flatten(),
+                Some(entry)
             }
-        } else {
-            store.get(word).ok().flatten()
+            // 没有汉语词典数据：退回英文，并标明来源，免得用户以为是坏数据
+            (Some(mut entry), _) => {
+                entry.definition = String::new();
+                Some(entry)
+            }
+            (None, Some(def)) => Some(Entry {
+                word: word.to_string(),
+                phonetic: def.pinyin,
+                translation: def.definition,
+                ..Default::default()
+            }),
+            (None, None) => self.get(word).ok().flatten(),
         }
     }
 }

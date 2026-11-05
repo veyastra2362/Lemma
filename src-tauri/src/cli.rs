@@ -862,7 +862,9 @@ fn lookup(args: &[String]) {
     let started = Instant::now();
     let mut hit = None;
     for _ in 0..repeat {
-        hit = store.lookup_any(word);
+        // `--no-zh-defs` 用来对照"关闭中文释义"时的结果（等于只走 CEDICT 的英文）
+        let zh_defs = !args.iter().any(|arg| arg == "--no-zh-defs");
+        hit = store.lookup_any_with(word, zh_defs);
     }
     let elapsed = started.elapsed();
     let per_query_us = elapsed.as_secs_f64() * 1_000_000.0 / f64::from(repeat.max(1));

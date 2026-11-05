@@ -460,8 +460,14 @@ pub async fn translate_text(
 
 /// 查一个词（Deck 下探用）。未收录返回 null，不是错误。
 #[tauri::command]
-pub fn lookup_word(word: String) -> Option<crate::core::dict::Entry> {
-    crate::core::dict::lookup_any(&word)
+pub fn lookup_word(
+    store: State<'_, crate::core::settings::SettingsStore>,
+    word: String,
+) -> Option<crate::core::dict::Entry> {
+    let zh_defs = store.get().zh_defs;
+    crate::core::dict::open_default()
+        .ok()
+        .and_then(|dict| dict.lookup_any_with(&word, zh_defs))
 }
 
 /// 按内容高度调整 HUD（前端量出来之后调用）。

@@ -658,6 +658,20 @@ export function SettingsView() {
 
           <section id="set-translate" className="mb-7">
               <h2 className="set-h">{t("settingsSectionTranslate")}</h2>
+              <Row
+                label={t("settingsZhDefs")}
+                hint={
+                  settings?.zhDefs === false
+                    ? t("settingsZhDefsOff")
+                    : t("settingsZhDefsOn")
+                }
+              >
+                <Switch
+                  on={settings?.zhDefs ?? true}
+                  label={t("settingsZhDefs")}
+                  onChange={(on) => apply({ zhDefs: on })}
+                />
+              </Row>
               <p className="set-desc">译文会落盘缓存，重启后重复段落直接命中。</p>
               <Row
                 label={t("settingsTranslateService")}
@@ -766,13 +780,6 @@ export function SettingsView() {
                   on={settings?.showHints ?? true}
                   label={t("settingsShowHints")}
                   onChange={(on) => apply({ showHints: on })}
-                />
-              </Row>
-              <Row label={t("settingsZhDefs")} hint={t("settingsZhDefsHint")}>
-                <Switch
-                  on={settings?.zhDefs ?? true}
-                  label={t("settingsZhDefs")}
-                  onChange={(on) => apply({ zhDefs: on })}
                 />
               </Row>
               <Row label={t("settingsSectionAccent")}>
