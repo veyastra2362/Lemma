@@ -165,3 +165,7 @@ pub fn clipboard_restore(snapshot: &backend::ClipboardSnapshot) -> bool {
 pub fn clipboard_is_empty() -> bool {
     backend::clipboard_is_empty()
 }
+/// 把 Native Messaging 宿主登记给 Chrome / Edge（写 HKCU 注册表）。
+pub fn register_native_host(name: &str, manifest_path: &str) -> bool {
+    backend::register_native_host(name, manifest_path)
+}

@@ -522,3 +522,38 @@ pub async fn download_models(app: AppHandle, kind: String) -> Result<usize, Stri
     }
     result
 }
+/// 浏览器扩展的安装状态。
+#[derive(serde::Serialize)]
+pub struct ExtensionStatus {
+    pub installed: bool,
+    pub dir: String,
+    /// 扩展 ID 固定写死在 manifest 的 key 里，这里回显给界面提示用。
+    pub extension_id: String,
+}
+
+#[tauri::command]
+pub fn extension_status() -> ExtensionStatus {
+    ExtensionStatus {
+        installed: crate::core::extension::is_installed(),
+        dir: crate::core::extension::extension_dir()
+            .map(|dir| dir.display().to_string())
+            .unwrap_or_default(),
+        extension_id: "kchhodaiilomkholhbpajlgkblnikfpb".to_string(),
+    }
+}
+
+/// 一键安装浏览器扩展所需的宿主清单与注册表项。
+///
+/// 浏览器不允许程序替用户加载扩展，所以最后一步（开发者模式 → 加载已解压的扩展）
+/// 必须用户自己点，界面会给出路径与步骤。
+#[tauri::command]
+pub fn install_extension() -> Result<ExtensionStatus, String> {
+    let report = crate::core::extension::install();
+    if let Some(error) = report.error {
+        return Err(error);
+    }
+    if !report.registry {
+        return Err("注册表写入失败（Chrome/Edge 都没登记上），请检查权限".to_string());
+    }
+    Ok(extension_status())
+}

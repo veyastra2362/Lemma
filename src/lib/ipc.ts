@@ -7,6 +7,7 @@ import type {
   PaintSample,
   ReaderContent,
   RuntimeStats,
+  ExtensionStatus,
   ModelStatus,
   Settings,
   SpeakResult,
@@ -75,6 +76,10 @@ export const ipc = {
   /** 本地模型（OCR / TTS）的安装状态与目录。 */
   modelStatus: () =>
     withRetry("model_status", () => invoke<ModelStatus>("model_status")),
+  /** 浏览器扩展安装状态。 */
+  extensionStatus: () => invoke<ExtensionStatus>("extension_status"),
+  /** 一键安装扩展所需的宿主清单与注册表项。 */
+  installExtension: () => invoke<ExtensionStatus>("install_extension"),
   /** 按需下载可选模型，返回下载的文件数。 */
   downloadModels: (kind: "tts") => invoke<number>("download_models", { kind }),
   openModelDir: (kind: "ocr" | "tts") =>

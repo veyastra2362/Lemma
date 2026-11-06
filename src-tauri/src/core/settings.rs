@@ -126,6 +126,11 @@ pub struct Settings {
     /// 关掉时中文词不可点；没导入汉语词典数据时也会自动失效（查不到就是查不到）。
     #[serde(default = "default_true")]
     pub zh_defs: bool,
+    /// 是否允许浏览器扩展用本应用做回填。
+    ///
+    /// 关掉后宿主会直接拒绝扩展的请求（扩展留在浏览器里也不会生效）。
+    #[serde(default = "default_true")]
+    pub extension_write_back: bool,
     /// 强调色。
     #[serde(default = "default_accent")]
     pub accent: Accent,
@@ -223,6 +228,7 @@ impl Default for Settings {
             show_hints: true,
             speech_speed: default_speech_speed(),
             zh_defs: true,
+            extension_write_back: true,
             accent: default_accent(),
             speak_original: true,
             speak_translation: true,

@@ -103,6 +103,8 @@ export interface Settings {
   speechSpeed: number;
   /** 是否启用「中文释义」（点释义里的中文词查汉语词典）。 */
   zhDefs: boolean;
+  /** 是否允许浏览器扩展用本应用回填。 */
+  extensionWriteBack: boolean;
   /** 强调色（整套 UI 只有一个）。 */
   accent: Accent;
   /** 卡片上是否显示「朗读原文」。 */
@@ -153,4 +155,10 @@ export interface Capture {
   app: string;
   elapsedMs: number;
   error: string | null;
+}
+/** 浏览器扩展的安装状态。 */
+export interface ExtensionStatus {
+  installed: boolean;
+  dir: string;
+  extensionId: string;
 }

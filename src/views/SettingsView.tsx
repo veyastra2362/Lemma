@@ -5,7 +5,7 @@ import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t } from "../i18n";
 import { ipc, isTauri } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
-import type { Accent, CaptureMode, CardSections, ModelStatus, Settings } from "../types";
+import type { Accent, CaptureMode, CardSections, ExtensionStatus, ModelStatus, Settings } from "../types";
 import { formatHotkey } from "../utils/hotkey";
 
 /*
@@ -17,6 +17,7 @@ import { formatHotkey } from "../utils/hotkey";
 */
 
 type Category =
+  | "extension"
   | "trigger"
   | "capture"
   | "models"
@@ -36,6 +37,7 @@ const NAV: { key: Category; label: string }[] = [
   { key: "ocr", label: t("settingsSectionOcr") },
   { key: "compare", label: t("settingsSectionReader") },
   { key: "translate", label: t("settingsSectionTranslate") },
+  { key: "extension", label: t("settingsSectionExtension") },
   { key: "card", label: t("settingsSectionCard") },
   { key: "ui", label: t("settingsSectionLooks") },
   { key: "perf", label: t("settingsSectionPerf") },
@@ -369,6 +371,7 @@ export function SettingsView() {
   }, []);
   const [recordingTarget, setRecordingTarget] = useState<null | "hud" | "reader" | "ocr">(null);
   const [models, setModels] = useState<ModelStatus | null>(null);
+  const [extension, setExtension] = useState<ExtensionStatus | null>(null);
   const recording = recordingTarget !== null;
   const [error, setError] = useState<string | null>(null);
 
@@ -409,6 +412,17 @@ export function SettingsView() {
       .modelStatus()
       .then(setModels)
       .catch(() => setModels(null));
+  }, []);
+
+  // 扩展状态：宿主清单与扩展目录是否已就位
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+    void ipc
+      .extensionStatus()
+      .then(setExtension)
+      .catch(() => setExtension(null));
   }, []);
 
   /** 重新读一次模型状态（下载完成后调用）。 */
@@ -836,6 +850,51 @@ export function SettingsView() {
                   </button>
                 </div>
               </Row>
+          </section>
+
+          <section id="set-extension" className="mb-7">
+              <h2 className="set-h">{t("settingsSectionExtension")}</h2>
+              <p className="set-desc">{t("settingsExtensionHint")}</p>
+              <Row
+                label={t("settingsExtensionInstall")}
+                hint={
+                  extension?.installed
+                    ? t("settingsExtensionInstalled")
+                    : t("settingsExtensionMissing")
+                }
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    void ipc
+                      .installExtension()
+                      .then(setExtension)
+                      .catch((error: unknown) => {
+                        setError(String(error));
+                      });
+                  }}
+                  className="set-btn"
+                >
+                  {t("settingsExtensionInstallAction")}
+                </button>
+              </Row>
+              <Row label={t("settingsExtensionEnabled")} hint={t("settingsExtensionEnabledHint")}>
+                <Switch
+                  on={settings?.extensionWriteBack ?? true}
+                  label={t("settingsExtensionEnabled")}
+                  onChange={(on) => apply({ extensionWriteBack: on })}
+                />
+              </Row>
+              {extension?.dir && (
+                <p className="mt-1 break-all font-mono text-[12px] text-[var(--hud-faint)]">
+                  {extension.dir}
+                </p>
+              )}
+              {extension?.installed && (
+                <p className="mt-1 text-[11px] leading-[1.55] text-[var(--hud-muted)]">
+                  {t("settingsExtensionSteps")}
+                </p>
+              )}
           </section>
 
           <section id="set-card" className="mb-7">

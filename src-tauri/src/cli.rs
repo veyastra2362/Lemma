@@ -62,6 +62,11 @@ pub fn try_run() -> bool {
             clipboard_roundtrip();
             true
         }
+        "--install-extension" => {
+            crate::platform::console::attach_parent();
+            install_extension_cli();
+            true
+        }
         "--native-host" => {
             // Chrome/Firefox 通过 stdio 与本进程通信，不挂控制台
             crate::native_host::run();
@@ -1140,4 +1145,15 @@ fn clipboard_roundtrip() {
             "还原失败（检查格式支持）"
         }
     );
+}
+/// 安装浏览器扩展的宿主清单与注册表（命令行验证用）。
+fn install_extension_cli() {
+    let report = crate::core::extension::install();
+    println!("扩展目录   : {}", report.extension_dir);
+    println!("Chrome 清单: {}", report.host_manifest);
+    println!("Firefox 清单: {}", report.firefox_manifest);
+    println!("注册表     : {}", report.registry);
+    if let Some(error) = report.error {
+        println!("失败：{error}");
+    }
 }

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Lemma 回填",
+  "version": "0.1.0",
+  "description": "把 Lemma 的译文写回网页原文位置。与本地 Lemma 桌面应用通过 Native Messaging 通信。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAujoimtuPNfcrbBh1eK/AeMyZG9ElBzrZ0QISrHGTbC4SOHv6nkRvY1t5QQolQskNIWRZdHUq8xiGlps/anEnriYS1C4Xj9he+0Bp0k91QgaV3zLGn5kyU399XV/FLAuovaymEj5GrvFgDeM9M71W/8zI6o/pfjjZgcQYD9dmQJVmZdAYgky4UPR+/n4iR/yM5dJ6AP/AajYgvQO3SKT08tYA/Umne2Bvp/Gz5vMOntvvcL+dxBsYKArvBAKAuD1qWroncHgccOgTnR3hv9zevtP2lRba7oOnuvoiBjYezf2oI+sSbgTGlNpVHnAcv066/OXz84jBDP2J7KG5co8rtwIDAQAB",
+  "permissions": ["nativeMessaging", "contextMenus", "activeTab", "scripting"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "用 Lemma 翻译选中文本"
+  },
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+L"
+      },
+      "description": "翻译选中文本并在原位回填"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "lemma-writeback@lunar.dev",
+      "strict_min_version": "115.0"
+    }
+  }
+}

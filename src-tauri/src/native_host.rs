@@ -109,6 +109,12 @@ fn handle(runtime: &tokio::runtime::Runtime, request: Request) -> Response {
             response
         }
         "translate" => {
+            // 设置里关掉「浏览器回填」后，扩展发来的请求一律拒绝
+            let data_dir = crate::core::paths::app_data_dir().unwrap_or_default();
+            let settings = crate::core::settings::SettingsStore::load(&data_dir).get();
+            if !settings.extension_write_back {
+                return Response::err("浏览器回填已在 Lemma 设置里关闭");
+            }
             if request.text.trim().is_empty() {
                 return Response::err("text 不能为空");
             }

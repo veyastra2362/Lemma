@@ -67,7 +67,9 @@ pub(crate) use clipboard::{
 };
 
 mod console;
+mod registry;
 pub(crate) use console::attach_parent as attach_parent_console;
+pub(crate) use registry::register_native_host;
 
 /// 整个虚拟桌面的物理像素边界（多屏时含负坐标）。
 pub fn virtual_screen_bounds() -> Option<crate::platform::placement::Rect> {

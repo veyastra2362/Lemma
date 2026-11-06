@@ -1,0 +1,7 @@
+{
+  "name": "dev.lunar.lemma",
+  "description": "Lemma 桌面应用的 Native Messaging 宿主",
+  "path": "__EXE_PATH__",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://kchhodaiilomkholhbpajlgkblnikfpb/"]
+}

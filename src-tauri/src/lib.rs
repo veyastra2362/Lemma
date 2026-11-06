@@ -65,6 +65,8 @@ pub fn run() {
             commands::close_settings,
             commands::lookup_word,
             commands::download_models,
+            commands::extension_status,
+            commands::install_extension,
             commands::translate_text,
             commands::speak_text,
             commands::synthesize_speech,
