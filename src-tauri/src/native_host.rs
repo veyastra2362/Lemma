@@ -61,6 +61,10 @@ impl Response {
 
 /// 跑 Native Messaging 循环；stdin 关闭时返回。
 pub fn run() {
+    // 必须最先做：stdout 是协议通道（4 字节长度 + JSON），
+    // 任何日志写进 stdout 都会把帧头写坏（实测：日志混进去后浏览器读到的"长度"是乱的）。
+    crate::core::logs::silence_stdout();
+
     // 词库与翻译都要用；词库缺失不致命（翻译仍可用）
     let _ = crate::core::dict::open_default();
 
@@ -82,10 +86,7 @@ pub fn run() {
     let stdout = std::io::stdout();
     let mut output = stdout.lock();
 
-    loop {
-        let Some(body) = read_frame(&mut input) else {
-            break;
-        };
+    while let Some(body) = read_frame(&mut input) {
         let response = match serde_json::from_slice::<Request>(&body) {
             Ok(request) => handle(&runtime, request),
             Err(error) => Response::err(format!("请求不是合法 JSON：{error}")),
@@ -139,22 +140,12 @@ fn translate(runtime: &tokio::runtime::Runtime, text: String, target: Option<Str
         }
     }
 
-    // 翻译是异步的；宿主没有 Tauri 运行时，这里自建一个单线程 runtime
-    let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(runtime) => runtime,
-        Err(error) => return Response::err(format!("创建运行时失败：{error}")),
-    };
-    crate::core::logs::line(format!(
-        "native host translate start chars={} provider={:?} target={:?}",
-        text.chars().count(),
-        config.provider,
-        config.target
-    ));
+    // 用 `run()` 建好的多线程 runtime：翻译链路里有跨 await 的锁，
+    // 单线程 runtime 会自锁（实测卡死 30 秒无响应）。
+    eprintln!("[lemma-host] settings loaded");
     let started = std::time::Instant::now();
-    // 上限 20 秒：宿主卡住会让浏览器一直在等，必须自己兜住
+    // 上限 20 秒：宿主卡住会让浏览器一直等，必须自己兜住
+    eprintln!("[lemma-host] translate start");
     let outcome = runtime.block_on(async {
         tokio::time::timeout(
             std::time::Duration::from_secs(20),
@@ -162,10 +153,10 @@ fn translate(runtime: &tokio::runtime::Runtime, text: String, target: Option<Str
         )
         .await
     });
-    crate::core::logs::line(format!(
-        "native host translate done {:.0}ms",
+    eprintln!(
+        "[lemma-host] translate done {:.0}ms",
         started.elapsed().as_secs_f64() * 1000.0
-    ));
+    );
     let outcome = match outcome {
         Ok(result) => result,
         Err(_) => return Response::err("翻译超时（20 秒）"),
