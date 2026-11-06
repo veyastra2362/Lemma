@@ -66,9 +66,7 @@ pub(crate) use clipboard::{
     read_text as read_clipboard_text_probe, restore as clipboard_restore, restore_clipboard,
     snapshot as clipboard_snapshot, write_text as write_clipboard_text_probe,
 };
-pub(crate) use replace::{
-    Method as ReplaceMethod, Outcome as ReplaceOutcome, replace_selection, top_level,
-};
+pub(crate) use replace::{Outcome as ReplaceOutcome, replace_selection, top_level};
 
 mod console;
 pub(crate) use console::attach_parent as attach_parent_console;

@@ -191,10 +191,6 @@ fn key(code: VIRTUAL_KEY, down: bool) -> INPUT {
 }
 /// 取某个控件的顶层窗口（抢焦点用 `GA_ROOT = 2`）。
 pub fn top_level(handle: isize) -> isize {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GA_ROOT, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowTextW, IsWindow,
-        SW_MINIMIZE, SW_RESTORE, SendMessageW, SetForegroundWindow, ShowWindow,
-    };
     if handle == 0 {
         return 0;
     }
