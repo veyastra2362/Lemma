@@ -62,6 +62,11 @@ pub fn try_run() -> bool {
             clipboard_roundtrip();
             true
         }
+        "--native-host" => {
+            // Chrome/Firefox 通过 stdio 与本进程通信，不挂控制台
+            crate::native_host::run();
+            true
+        }
         "--write-probe" => {
             crate::platform::console::attach_parent();
             write_probe();

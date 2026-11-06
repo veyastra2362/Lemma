@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod core;
+pub mod native_host;
 pub mod platform;
 pub mod probe;
 
