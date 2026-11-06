@@ -9,7 +9,7 @@
 //! 扩展 ID 由 `manifest.json` 里的 `key` 固定，所以宿主清单可以写死白名单，
 //! 用户不必回填 ID。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// 扩展源码（编译期嵌入，避免安装包资源路径的坑）。
 const MANIFEST: &str = include_str!("../../../extension/manifest.json");
@@ -115,7 +115,7 @@ pub fn install() -> InstallReport {
     report
 }
 
-fn write_extension(dir: &PathBuf) -> Result<(), String> {
+fn write_extension(dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("建扩展目录失败：{e}"))?;
     for (name, content) in [
         ("manifest.json", MANIFEST),
@@ -127,13 +127,13 @@ fn write_extension(dir: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-fn write_file(path: &PathBuf, content: &str) -> Result<(), String> {
+fn write_file(path: &Path, content: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("建目录失败：{e}"))?;
     }
     std::fs::write(path, content).map_err(|e| format!("写 {} 失败：{e}", path.display()))
 }
 
-fn register_chrome(manifest: &PathBuf) -> bool {
+fn register_chrome(manifest: &Path) -> bool {
     crate::platform::register_native_host(HOST_NAME, &manifest.display().to_string())
 }
