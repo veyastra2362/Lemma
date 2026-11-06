@@ -562,6 +562,22 @@ export function SettingsView() {
           <section id="set-models" className="mb-7">
               <h2 className="set-h">{t("settingsSectionModels")}</h2>
               <p className="set-desc">{t("settingsModelsHint")}</p>
+              <div className="border-b border-[var(--hud-border-soft)] py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12.5px]">{t("settingsModelDict")}</span>
+                  <span
+                    className={`set-status ${models?.dict ? "is-ok" : "is-off"}`}
+                  >
+                    <i />
+                    {models?.dict
+                      ? `${t("settingsModelReady")} · ${models.dict.toLocaleString()} / ${models.zhTerms.toLocaleString()}`
+                      : t("settingsModelMissing")}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] leading-[1.55] text-[var(--hud-muted)]">
+                  {t("settingsModelDictHint")}
+                </p>
+              </div>
               <ModelRow
                 label={t("settingsModelOcr")}
                 ready={models?.ocrReady ?? false}

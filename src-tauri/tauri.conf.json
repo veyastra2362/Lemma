@@ -89,7 +89,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": ["models/ocr/*", "models/tts/*"],
+    "resources": ["models/ocr/*", "models/tts/*", "models/dict.redb"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

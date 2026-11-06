@@ -10,7 +10,10 @@ Status: implemented
 
 ## 决定
 
-`bundle.resources` 带 `models/ocr/*` 与 `models/tts/*`，首次启动把缺失的文件复制到应用数据目录。
+`bundle.resources` 带 `models/ocr/*`、`models/tts/*`、`models/dict.redb`，首次启动把缺失的文件复制到应用数据目录。
+
+其中 `dict.redb` 是**只含 ECDICT + CC-CEDICT** 的干净词库（128.5 MB，中英互译与中文分词都依赖它）。
+汉语词典（chinese-xinhua）不在其中：那份数据版权归属不明确，仍由用户 `--import-zh-defs` 自取。
 
 - 权重仍**不进仓库**：`.gitignore` 增加 `src-tauri/models/`（整目录，不只是 `*.onnx`——
   `cmudict.dict` / `zf_001.bin` / `ppocr_keys_v1.txt` / `tokenizer.json` 也会被提交）。
@@ -36,12 +39,14 @@ Status: implemented
 
 | 指标 | 改前 | 改后 |
 | --- | --- | --- |
-| NSIS 安装包 | 6.19 MB | **103.90 MiB** |
+| NSIS 安装包 | 6.19 MB | **128.83 MiB** |
 | 全新用户首次启动（含复制 140 MB） | 1835 ms | **1173 ms** |
-| 磁盘占用 | 数据目录 140 MB | 安装目录 140 MB + 数据目录 140 MB |
+| 磁盘占用 | 数据目录 140 MB | 安装目录 268 MB + 数据目录 268 MB |
 
 - 安装包从「随便发」变成 100 MB 级，分发渠道（GitHub Release）需确认可接受。
-- **中文朗读依赖词库**：拼音来自 CC-CEDICT，全新用户（无 `dict.redb`）点朗读会报
-  `词库不存在`；英文朗读正常（`tts english dict loaded`）。这是内置模型之后仍存在的
-  「装完还不完整」空档——是否把 ECDICT（MIT）/ CC-CEDICT（CC-BY-SA）也打进安装包待定。
+- 词库内置后**中英互译开箱可用**：全新用户启动即 `dict loaded 770611 entries`，
+  英文词卡有中文释义、中文词卡有英文 gloss，中文朗读的拼音来源也就位了。
+- 内置词库是「只含 ECDICT + CC-CEDICT」的干净构建。用户之后自己 `--import-zh-defs`
+  会往同一张库追加 `zhDefs` 表，两条路互不冲突。
+- 安装包从 6 MB 涨到 **128.83 MiB**：词库本身压缩率高（128.5 MB 只增加 25 MiB）。
 - 汉语词典（chinese-xinhua）**不内置**：数据版权归属不明确，设置里只给推荐与导入命令。

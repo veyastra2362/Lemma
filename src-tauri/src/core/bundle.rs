@@ -9,8 +9,15 @@
 
 use tauri::{AppHandle, Manager, Runtime};
 
-/// 安装目录里模型资源的相对位置（对应 `tauri.conf.json` 的 `bundle.resources`）。
-const BUNDLED: [(&str, &str); 2] = [("models/ocr", "ocr-models"), ("models/tts", "tts-models")];
+/// 目录型资源：（安装目录相对路径 → 数据目录子目录）。
+const BUNDLED_DIRS: [(&str, &str); 2] =
+    [("models/ocr", "ocr-models"), ("models/tts", "tts-models")];
+
+/// 单文件型资源：（安装目录相对路径 → 数据目录文件名）。
+///
+/// `dict.redb` 只含 ECDICT + CC-CEDICT（中英互译所需）；汉语词典不在其中，
+/// 那份数据版权不明确，由用户 `--import-zh-defs` 自己导。
+const BUNDLED_FILES: [(&str, &str); 1] = [("models/dict.redb", "dict.redb")];
 
 /// 把安装包自带的模型落到数据目录；返回复制了多少个文件。
 pub fn seed_models<R: Runtime>(app: &AppHandle<R>) -> usize {
@@ -22,7 +29,7 @@ pub fn seed_models<R: Runtime>(app: &AppHandle<R>) -> usize {
     };
 
     let mut copied = 0;
-    for (from, to) in BUNDLED {
+    for (from, to) in BUNDLED_DIRS {
         let source = resource_dir.join(from);
         if !source.is_dir() {
             continue;
@@ -52,5 +59,19 @@ pub fn seed_models<R: Runtime>(app: &AppHandle<R>) -> usize {
             }
         }
     }
+    for (from, to) in BUNDLED_FILES {
+        let source = resource_dir.join(from);
+        if !source.is_file() {
+            continue;
+        }
+        let dest = data_dir.join(to);
+        if dest.exists() {
+            continue;
+        }
+        if std::fs::copy(&source, &dest).is_ok() {
+            copied += 1;
+        }
+    }
+
     copied
 }

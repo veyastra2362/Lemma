@@ -63,6 +63,10 @@ export interface ReaderContent {
 }
 
 export interface ModelStatus {
+  /** 英汉词库条数（ECDICT）。0 = 没装。 */
+  dict: number;
+  /** 中文词条数（CC-CEDICT）。 */
+  zhTerms: number;
   /** 汉语词典条数（0 = 没导入）。 */
   zhDefs: number;
   ocrReady: boolean;
