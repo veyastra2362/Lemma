@@ -57,6 +57,11 @@ pub fn try_run() -> bool {
             lookup(&args);
             true
         }
+        "--clipboard-roundtrip" => {
+            crate::platform::console::attach_parent();
+            clipboard_roundtrip();
+            true
+        }
         "--write-probe" => {
             crate::platform::console::attach_parent();
             write_probe();
@@ -1097,4 +1102,37 @@ fn print_target(label: &str, target: Option<&crate::platform::uia::WriteTarget>)
         println!("  Value 内容: {:?}", target.value_preview);
     }
     println!("  结论   : {}", target.writable);
+}
+/// 剪贴板快照 / 还原自检：存快照 → 覆写 → 还原 → 比较文本是否回来。
+fn clipboard_roundtrip() {
+    let before = crate::platform::clipboard_snapshot();
+    let Some(before) = before else {
+        println!("快照失败（剪贴板被占用？）");
+        return;
+    };
+    let original_text = crate::platform::clipboard_is_empty();
+    println!(
+        "快照：{} 个格式，跳过 {} 个（{:?}），原本{}",
+        before.items.len(),
+        before.skipped.len(),
+        before.skipped,
+        if original_text { "为空" } else { "有内容" }
+    );
+
+    // 覆写成一个标记值
+    let _ = crate::platform::write_clipboard_text_probe("LEMMA-ROUNDTRIP-MARKER");
+    let during = crate::platform::read_clipboard_text_probe().unwrap_or_default();
+    println!("覆写后读到：{during:?}");
+
+    let restored = crate::platform::clipboard_restore(&before);
+    let after = crate::platform::read_clipboard_text_probe().unwrap_or_default();
+    println!("还原：{restored}，还原后文本：{after:?}");
+    println!(
+        "结论：{}",
+        if before.items.is_empty() || restored {
+            "还原流程走通"
+        } else {
+            "还原失败（检查格式支持）"
+        }
+    );
 }

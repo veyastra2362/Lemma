@@ -141,3 +141,27 @@ pub fn flush_compositor() {
 pub fn uia_write_probe() -> uia::WriteProbe {
     backend::uia_write_probe()
 }
+/// 自检用：直接写剪贴板文本。
+pub fn write_clipboard_text_probe(text: &str) -> bool {
+    backend::write_clipboard_text_probe(text)
+}
+
+/// 自检用：读剪贴板文本。
+pub fn read_clipboard_text_probe() -> Option<String> {
+    backend::read_clipboard_text_probe()
+}
+
+/// 剪贴板全格式快照（回填用）。
+pub fn clipboard_snapshot() -> Option<backend::ClipboardSnapshot> {
+    backend::clipboard_snapshot()
+}
+
+/// 还原剪贴板快照（回填用）。
+pub fn clipboard_restore(snapshot: &backend::ClipboardSnapshot) -> bool {
+    backend::clipboard_restore(snapshot)
+}
+
+/// 剪贴板当前是否为空。
+pub fn clipboard_is_empty() -> bool {
+    backend::clipboard_is_empty()
+}

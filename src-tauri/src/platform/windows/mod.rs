@@ -60,7 +60,11 @@ mod uia;
 pub(crate) use uia::{capture as uia_capture, probe as uia_probe, uia_write_probe};
 
 mod clipboard;
-pub(crate) use clipboard::{copy_selection, restore_clipboard};
+pub(crate) use clipboard::{
+    ClipboardSnapshot, copy_selection, is_empty as clipboard_is_empty,
+    read_text as read_clipboard_text_probe, restore as clipboard_restore, restore_clipboard,
+    snapshot as clipboard_snapshot, write_text as write_clipboard_text_probe,
+};
 
 mod console;
 pub(crate) use console::attach_parent as attach_parent_console;
