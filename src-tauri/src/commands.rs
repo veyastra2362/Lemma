@@ -522,3 +522,93 @@ pub async fn download_models(app: AppHandle, kind: String) -> Result<usize, Stri
     }
     result
 }
+/// 上一次回填写了什么，用于「撤回」。
+static LAST_WRITE: std::sync::Mutex<Option<LastWrite>> = std::sync::Mutex::new(None);
+
+#[derive(Clone)]
+struct LastWrite {
+    source: isize,
+    control: isize,
+    /// 被替换掉的原文。
+    original: String,
+    /// 写进去的译文。
+    written: String,
+}
+
+/// 回填结果。
+#[derive(serde::Serialize)]
+pub struct WriteBackResult {
+    /// `native` / `paste`
+    pub method: String,
+    /// 写入后从控件读回的文本（粘贴路径为空串）。
+    pub verified: String,
+    /// 被替换掉的原文，撤回时用。
+    pub original: String,
+    /// 是否支持撤回（粘贴路径没有可靠撤销，只能靠原文再写一次）
+    pub can_undo: bool,
+}
+
+/// 把一张卡片的内容写回源窗口的选区。
+///
+/// 只对**取词得到的**根卡片有效：OCR 卡片没有可写的文本控件，直接拒绝。
+#[tauri::command]
+pub fn write_back(text: String) -> Result<WriteBackResult, String> {
+    let capture = crate::core::selection::last().ok_or("没有可回填的取词结果")?;
+    if capture.source_hwnd == 0 {
+        return Err("这次取词没有对应的可写窗口（截图识别不支持回填）".to_string());
+    }
+    if capture.text.trim() == text.trim() {
+        return Err("译文与原文相同，无需回填".to_string());
+    }
+
+    let outcome = crate::platform::replace_selection(
+        capture.source_hwnd as isize,
+        capture.control_hwnd as isize,
+        &text,
+    )?;
+
+    let result = WriteBackResult {
+        method: outcome.method.as_str().to_string(),
+        verified: outcome.verified.clone(),
+        original: capture.text.clone(),
+        can_undo: true,
+    };
+    if let Ok(mut slot) = LAST_WRITE.lock() {
+        *slot = Some(LastWrite {
+            source: capture.source_hwnd as isize,
+            control: capture.control_hwnd as isize,
+            original: capture.text.clone(),
+            written: text,
+        });
+    }
+    crate::core::logs::line(format!(
+        "write_back method={} verified={}B",
+        result.method,
+        result.verified.len()
+    ));
+    Ok(result)
+}
+
+/// 撤回上一次回填：把原文写回同一位置。
+#[tauri::command]
+pub fn undo_write_back() -> Result<String, String> {
+    let Some(last) = LAST_WRITE.lock().ok().and_then(|slot| slot.clone()) else {
+        return Err("没有可撤回的回填".to_string());
+    };
+    // 只在当前内容确实还是我们写的那份时才撤回，避免覆盖用户在期间做的修改
+    let current = crate::core::selection::last()
+        .map(|capture| capture.text)
+        .unwrap_or_default();
+    if !current.is_empty() && current.trim() != last.written.trim() {
+        return Err("原文已变化（可能你已改过），为避免覆盖已取消撤回".to_string());
+    }
+    let outcome = crate::platform::replace_selection(last.source, last.control, &last.original)?;
+    if let Ok(mut slot) = LAST_WRITE.lock() {
+        *slot = None;
+    }
+    crate::core::logs::line(format!(
+        "write_back undo method={}",
+        outcome.method.as_str()
+    ));
+    Ok(outcome.method.as_str().to_string())
+}

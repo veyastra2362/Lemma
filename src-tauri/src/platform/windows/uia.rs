@@ -209,6 +209,9 @@ fn run_capture(automation: &IUIAutomation) -> UiaOutcome {
                 word: gathered.word.clone(),
                 paragraph: gathered.paragraph.clone(),
                 app,
+                control_hwnd: gathered.element.hwnd,
+                source_hwnd: crate::platform::windows::top_level(gathered.element.hwnd as isize)
+                    as i64,
                 note: if !gathered.note.is_empty() {
                     gathered.note.clone()
                 } else if gathered.best_text().is_some() {

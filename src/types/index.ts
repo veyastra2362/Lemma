@@ -154,3 +154,13 @@ export interface Capture {
   elapsedMs: number;
   error: string | null;
 }
+/** 回填结果。 */
+export interface WriteBackResult {
+  /** `native`（可撤销）或 `paste`（剪贴板粘贴）。 */
+  method: string;
+  /** 写入后从控件读回的文本；粘贴路径为空串。 */
+  verified: string;
+  /** 被替换掉的原文。 */
+  original: string;
+  canUndo: boolean;
+}

@@ -48,6 +48,8 @@ const zhCN = {
   readerModeSide: "并排",
   readerModeOverlay: "覆盖",
   retry: "重试",
+  hudWriteBack: "回填",
+  hudUndoWriteBack: "撤回",
   speakStart: "朗读",
   speakOriginal: "朗读原文",
   speakTranslation: "朗读译文",
