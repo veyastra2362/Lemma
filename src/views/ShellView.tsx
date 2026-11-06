@@ -648,11 +648,11 @@ export function ShellView() {
                   speakOriginal={settings?.speakOriginal ?? true}
                   speakTranslation={settings?.speakTranslation ?? true}
                   onRetry={() => setTranslation(card.id, { status: "idle" })}
-                  // 截图结果没有可写的文本控件，不提供回填
+                  // 只有原生编辑控件才提供回填；浏览器等一律不给按钮
                   onWriteBack={
-                    card.screenshot
-                      ? undefined
-                      : (text) => handleWriteBack(card.id, text)
+                    card.canWriteBack
+                      ? (text) => handleWriteBack(card.id, text)
+                      : undefined
                   }
                   onUndo={() => handleUndo(card.id)}
                   writeBackState={

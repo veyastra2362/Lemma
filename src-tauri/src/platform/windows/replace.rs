@@ -1,21 +1,15 @@
 //! 原地回填：把译文写回源应用。
 //!
-//! 两条路，按「能否不碰剪贴板」排序：
+//! **只走原生编辑控件**（`Edit` / `RichEdit` / `Scintilla` / `TextArea` 类名）：
+//! 向控件发 `EM_REPLACESEL`，`wParam = TRUE` 让它进控件自己的撤销栈。
 //!
-//! 1. **原生编辑控件**（`Edit` / `RichEdit` / `Scintilla`）：向控件发 `EM_REPLACESEL`，
-//!    直接替换当前选区。这条路是**可撤销的**（`wParam = TRUE` 让控件把这次替换记进自己的
-//!    撤销栈），而且完全不碰剪贴板，是首选。
-//! 2. **其它一切**（浏览器、Electron、Firefox…）：剪贴板 + 模拟 `Ctrl+V`。
-//!    实测 UIA 对浏览器文档的 `ValuePattern` 是只读的，`ITextRangeProvider` 又没有 SetText，
-//!    所以这条路绕不开。前置**全格式剪贴板快照**，做完立刻还原。
-//!
-//! 两条路都在写入前 `SetForegroundWindow` 抢回源窗口，否则按键/消息会打到我们自己的浮层上。
+//! 浏览器（Chrome / Edge / Firefox / Electron）**不支持**：它们把网页内容交给
+//! UIA 的 `TextPattern` 只读暴露，而 `ITextRangeProvider` 根本没有 SetText。
+//! 曾经用「剪贴板 + 模拟 Ctrl+V」兜底，实测两个问题无法接受：
+//! 焦点抢不回来时会把译文粘到别的应用里；粘贴后还可能污染用户剪贴板。
+//! 所以这条路**整体删除**，宁可提示"不支持"。
 
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
-    VIRTUAL_KEY, VK_CONTROL, VK_V,
-};
 use windows::Win32::UI::WindowsAndMessaging::{
     GA_ROOT, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindowTextW, IsWindow,
     SW_MINIMIZE, SW_RESTORE, SendMessageW, SetForegroundWindow, ShowWindow,
@@ -67,7 +61,14 @@ pub fn replace_selection(source: isize, control: isize, text: &str) -> Result<Ou
         }
     }
 
-    paste_into(source, text)
+    Err("这个应用不支持原地回填（浏览器等只能靠模拟按键，按设置已停用）".to_string())
+}
+
+/// 这个控件能不能被程序直接写入。
+pub fn can_replace(control: isize) -> bool {
+    control != 0
+        && unsafe { IsWindow(Some(HWND(control as *mut _))) }.as_bool()
+        && is_edit_like(&window_class(control))
 }
 
 /// 把焦点还给源窗口；拿不回来就返回 false。
@@ -131,64 +132,6 @@ fn send_replace(control: isize, text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 剪贴板 + 模拟 Ctrl+V。全格式快照在前，还原在后。
-fn paste_into(source: isize, text: &str) -> Result<Outcome, String> {
-    let snapshot = crate::platform::windows::clipboard_snapshot()
-        .ok_or_else(|| "剪贴板被别的程序占用，无法安全保存原内容".to_string())?;
-
-    if !crate::platform::windows::write_clipboard_text_probe(text) {
-        return Err("写剪贴板失败".to_string());
-    }
-
-    // 这一步是硬门槛：焦点没还给源窗口就粘贴，会把译文糊到别的应用里（实测踩到过）
-    if !focus(source) {
-        let _ = crate::platform::windows::clipboard_restore(&snapshot);
-        return Err("无法把焦点还给原窗口，已取消回填（避免粘到错误的应用）".to_string());
-    }
-    send_ctrl_v();
-    // 给目标应用一点时间处理 WM_PASTE / 输入事件
-    std::thread::sleep(std::time::Duration::from_millis(200));
-
-    let restored = crate::platform::windows::clipboard_restore(&snapshot);
-    if !restored {
-        crate::core::logs::line("writeback: 剪贴板还原失败（可能是目标应用改了剪贴板）");
-    }
-
-    Ok(Outcome {
-        method: Method::Paste,
-        verified: String::new(),
-    })
-}
-
-fn send_ctrl_v() {
-    let inputs = [
-        key(VK_CONTROL, true),
-        key(VK_V, true),
-        key(VK_V, false),
-        key(VK_CONTROL, false),
-    ];
-    // SAFETY: 数组长度即元素个数，结构体由 `key()` 完整构造。
-    unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
-}
-
-fn key(code: VIRTUAL_KEY, down: bool) -> INPUT {
-    INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: code,
-                wScan: 0,
-                dwFlags: if down {
-                    KEYBD_EVENT_FLAGS(0)
-                } else {
-                    KEYEVENTF_KEYUP
-                },
-                time: 0,
-                dwExtraInfo: 0,
-            },
-        },
-    }
-}
 /// 取某个控件的顶层窗口（抢焦点用 `GA_ROOT = 2`）。
 pub fn top_level(handle: isize) -> isize {
     if handle == 0 {

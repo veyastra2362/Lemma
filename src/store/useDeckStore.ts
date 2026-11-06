@@ -32,6 +32,8 @@ export interface Card {
   source: string | null;
   /** 取词耗时，仅根卡片显示。 */
   elapsedMs: number | null;
+  /** 这张卡片的来源支持原地回填吗（只有原生编辑控件支持）。 */
+  canWriteBack: boolean;
   /**
    * 是不是截图识别的结果。
    *
@@ -91,6 +93,7 @@ export const useDeckStore = create<DeckState>((set, get) => ({
       source: `${capture.app || "?"} · ${capture.tier ?? "-"}`,
       elapsedMs: capture.elapsedMs,
       screenshot: capture.tier === "ocr",
+      canWriteBack: capture.canWriteBack ?? false,
     };
     set({ cards: word ? [card] : [], nextId: 1 });
   },
@@ -121,6 +124,8 @@ export const useDeckStore = create<DeckState>((set, get) => ({
           source: null,
           elapsedMs: null,
           screenshot: false,
+          // 下探出来的词卡不来自某个可写控件
+          canWriteBack: false,
         },
       ],
       nextId: nextId + 1,

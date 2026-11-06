@@ -177,3 +177,7 @@ pub fn replace_selection(
 pub fn window_top_level(handle: isize) -> isize {
     backend::top_level(handle)
 }
+/// 这个控件能不能被程序直接写入（决定界面是否提供「回填」）。
+pub fn can_replace(control: isize) -> bool {
+    backend::can_replace(control)
+}
