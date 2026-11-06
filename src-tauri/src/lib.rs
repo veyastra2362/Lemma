@@ -223,13 +223,8 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                     let started = std::time::Instant::now();
-                    let assets: &[crate::core::fetch::Asset] = if kind == "ocr" {
-                        crate::core::fetch::OCR
-                    } else {
-                        crate::core::fetch::TTS
-                    };
                     let result = tauri::async_runtime::spawn_blocking(move || {
-                        crate::core::fetch::fetch(assets, |_| {})
+                        crate::core::fetch::fetch_tts(|_| {})
                     })
                     .await;
                     logs::line(format!(

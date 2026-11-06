@@ -76,7 +76,7 @@ export const ipc = {
   modelStatus: () =>
     withRetry("model_status", () => invoke<ModelStatus>("model_status")),
   /** 按需下载可选模型（tts / ocr），返回下载的文件数。 */
-  downloadModels: (kind: "tts" | "ocr") =>
+  downloadModels: (kind: "tts") =>
     invoke<number>("download_models", { kind }),
   openModelDir: (kind: "ocr" | "tts") =>
     invoke<void>("open_model_dir", { kind }),

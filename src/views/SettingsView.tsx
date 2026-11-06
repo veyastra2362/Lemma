@@ -423,8 +423,7 @@ export function SettingsView() {
   }, []);
 
   /** 点了下载按钮：进度靠 `models://download` 事件推过来，完成后刷新状态。 */
-  const startDownload = useCallback(
-    (kind: "tts" | "ocr") => {
+  const startDownload = useCallback((kind: "tts") => {
       setDownloading((prev) => ({ ...prev, [kind]: 0 }));
       void ipc
         .downloadModels(kind)
@@ -666,11 +665,6 @@ export function SettingsView() {
                 ready={models?.ocrReady ?? false}
                 dir={models?.ocrDir ?? "—"}
                 onOpen={() => openDir("ocr")}
-                download={{
-                  label: "下载（13.6 MiB）",
-                  progress: downloading.ocr ?? null,
-                  onClick: () => startDownload("ocr"),
-                }}
               />
               <ModelRow
                 label={t("settingsModelTts")}
@@ -678,7 +672,7 @@ export function SettingsView() {
                 dir={models?.ttsDir ?? "—"}
                 onOpen={() => openDir("tts")}
                 download={{
-                  label: "下载（84 MiB）",
+                  label: "下载（86 MiB）",
                   progress: downloading.tts ?? null,
                   onClick: () => startDownload("tts"),
                 }}

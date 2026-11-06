@@ -10,25 +10,30 @@ Status: implemented
 
 ## 决定
 
-安装包只带**程序 + 英汉词库**（`models/dict.redb`，128.5 MB，压缩后 23.9 MiB），
-OCR 与朗读模型改成设置页里的**下载按钮**（`core::fetch`）。
+安装包带**程序 + 英汉词库 + OCR 模型**（44.80 MiB）；朗读模型单独下发成**一个 zip**
+（`tts-models.zip`，86.5 MB），设置页点按钮下载 → 校验 → 解包。
 
 | 部分 | 原始 | 装进安装包后 |
 | --- | --- | --- |
-| 中文朗读（Kokoro q8） | 125.4 MB | 84.1 MiB |
+| lemma.exe（程序 + onnxruntime） | 24.0 MB | 6.1 MiB |
+| 英汉词库 `dict.redb` | 128.5 MB | 23.9 MiB |
 | OCR（PP-OCRv4 mobile） | 14.9 MB | 13.6 MiB |
-| 英汉词库 | 128.5 MB | 23.9 MiB |
+| 朗读（Kokoro q8） | 125.4 MB | 不内置，下载 86.5 MB |
 
-朗读一个人占安装包的 65%，是把它拿出安装包的唯一理由；OCR 虽小但同样做成了可下载
-（机制是同一套代码，顺带把「装完还要不要截图」的选择权给用户）。
+朗读一个人就是 84 MiB 压缩后（占全量安装包 65%），这是把它拿出来唯一说得过去的理由；
+OCR 只有 13.6 MiB，留内置换「装完就能截图」。
+
+**为什么打成一个 zip 而不是 4 个裸文件**：发布时只要上传一个资产，用户也只下一次；
+deflate 后 86.5 MB，比 4 个文件分开传（125.4 MB）还小，接近 LZMA 的 84.1 MB。
 
 下载器要点：
 
-- 源默认 `https://github.com/veyastra2362/Lemma/releases/download/models-v1/<文件名>`，
-  可用 `LEMMA_MODEL_BASE_URL` 覆盖（本地用 `python -m http.server` 就能验证全链路）。
-- 每个文件带 SHA-256：校验不过**删掉半成品**并报错，不会留下坏模型。
-- 已存在且大小一致的文件直接跳过，重复点按钮不会白下 84 MiB。
-- 下载跑在 `spawn_blocking` 的独立线程里，进度用 `models://download` 事件推给设置页
+- 源默认 `https://github.com/veyastra2362/Lemma/releases/download/models-v1/tts-models.zip`，
+  可用 `LEMMA_MODEL_BASE_URL` 覆盖（本地 `python -m http.server` 就能验证全链路）。
+- 先校验 SHA-256 再解包；校验不过删掉半成品，不会留下坏模型。
+- 解包**只按白名单取 4 个固定文件名**，不按条目路径落盘——省掉防 `../` 穿越的代码。
+- 解完删掉压缩包（留着要多占 86 MB）。
+- 下载跑在 `spawn_blocking` 的独立线程，进度用 `models://download` 事件推给设置页
   （同步命令会卡主线程，见 AGENTS 第 7 条）。
 
 ## 备选方案
@@ -49,7 +54,7 @@ OCR 与朗读模型改成设置页里的**下载按钮**（`core::fetch`）。
 
 | 指标 | 改前 | 改后 |
 | --- | --- | --- |
-| NSIS 安装包 | 6.19 MB | **31.16 MiB**（装完下载模型后 31.16 + 97.7） |
+| NSIS 安装包 | 6.19 MB | **44.80 MiB**（+ 朗读 86.5 MB 按需下载） |
 | 全新用户首次启动（含复制 140 MB） | 1835 ms | **1173 ms** |
 | 磁盘占用 | 数据目录 140 MB | 安装目录 268 MB + 数据目录 268 MB |
 
