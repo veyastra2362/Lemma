@@ -106,3 +106,6 @@ pnpm-debug.log*
 .dccache/
 *.profraw
 *.lnk
+
+# 模型权重与配套文件：作为安装包输入（src-tauri/models），但不进仓库
+src-tauri/models/

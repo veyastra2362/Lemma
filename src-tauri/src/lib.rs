@@ -81,6 +81,11 @@ pub fn run() {
             commands::report_first_paint,
         ])
         .setup(|app| {
+            // 安装包自带的模型先落到数据目录（已有文件不动），再进入正常初始化
+            let seeded = crate::core::bundle::seed_models(app.handle());
+            if seeded > 0 {
+                crate::core::logs::line(format!("bundled models seeded files={seeded}"));
+            }
             let handle = app.handle();
 
             if let Ok(dir) = handle.path().app_data_dir() {
