@@ -143,8 +143,6 @@ export interface Capture {
   paragraph: string;
   /** null 表示这次没取到。 */
   tier: CaptureTier | null;
-  /** 这个来源支持原地回填吗（只有原生编辑控件支持）。旧数据可能没有这个字段。 */
-  canWriteBack?: boolean;
   /** 词库命中的词条；未收录或没装词库时为 null。 */
   entry: Entry | null;
   /** 这段文本该走翻译而不是查词（规则在 Rust 侧 `translate::is_single_word`）。 */
@@ -155,14 +153,4 @@ export interface Capture {
   app: string;
   elapsedMs: number;
   error: string | null;
-}
-/** 回填结果。 */
-export interface WriteBackResult {
-  /** `native`（可撤销）或 `paste`（剪贴板粘贴）。 */
-  method: string;
-  /** 写入后从控件读回的文本；粘贴路径为空串。 */
-  verified: string;
-  /** 被替换掉的原文。 */
-  original: string;
-  canUndo: boolean;
 }

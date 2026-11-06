@@ -65,15 +65,6 @@ pub struct Capture {
     pub app: String,
     pub elapsed_ms: f64,
     pub error: Option<String>,
-    /// 文本控件句柄（0 = 不可用，回填只能走粘贴或者不支持）。
-    #[serde(default)]
-    pub control_hwnd: i64,
-    /// 源窗口顶层句柄（回填前要抢焦点）。
-    #[serde(default)]
-    pub source_hwnd: i64,
-    /// 这个目标能不能被程序直接写入（决定界面是否给「回填」）。
-    #[serde(default)]
-    pub can_write_back: bool,
 }
 
 /// 从 UIA 结果里挑文本：选区优先，其次光标词。空白一律视为没有。
@@ -131,10 +122,6 @@ pub fn store_ocr(text: String, app: String, elapsed_ms: f64) -> Capture {
         app,
         elapsed_ms,
         error: None,
-        // OCR 是屏幕区域，没有可写的文本控件
-        control_hwnd: 0,
-        source_hwnd: 0,
-        can_write_back: false,
     };
     if let Ok(mut slot) = slot().lock() {
         *slot = Some(capture.clone());
@@ -237,9 +224,6 @@ pub fn capture(mode: CaptureMode) -> Capture {
             tier: Some(tier),
             app: uia.app,
             elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
-            control_hwnd: uia.control_hwnd,
-            source_hwnd: uia.source_hwnd,
-            can_write_back: crate::platform::can_replace(uia.control_hwnd as isize),
             error: None,
         };
         store(&result);
@@ -272,9 +256,6 @@ pub fn capture(mode: CaptureMode) -> Capture {
                     tier: Some(Tier::Clipboard),
                     app: uia.app,
                     elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
-                    control_hwnd: uia.control_hwnd,
-                    source_hwnd: uia.source_hwnd,
-                    can_write_back: crate::platform::can_replace(uia.control_hwnd as isize),
                     error: None,
                 }
             }

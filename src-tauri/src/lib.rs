@@ -64,8 +64,6 @@ pub fn run() {
             commands::close_settings,
             commands::lookup_word,
             commands::download_models,
-            commands::write_back,
-            commands::undo_write_back,
             commands::translate_text,
             commands::speak_text,
             commands::synthesize_speech,

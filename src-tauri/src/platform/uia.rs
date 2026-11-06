@@ -34,10 +34,6 @@ pub struct UiaOutcome {
     pub app: String,
     /// 未命中原因 / 备注。
     pub note: String,
-    /// 文本控件的窗口句柄（0 = 不可用）。回填靠它定位写入目标。
-    pub control_hwnd: i64,
-    /// 控件所属的顶层窗口句柄（抢焦点用）。
-    pub source_hwnd: i64,
 }
 
 /// 命中的控件信息，用于诊断与支持矩阵。

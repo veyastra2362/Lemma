@@ -8,7 +8,6 @@ import type {
   ReaderContent,
   RuntimeStats,
   ModelStatus,
-  WriteBackResult,
   Settings,
   SpeakResult,
   TranslateResult,
@@ -78,10 +77,6 @@ export const ipc = {
     withRetry("model_status", () => invoke<ModelStatus>("model_status")),
   /** 按需下载可选模型，返回下载的文件数。 */
   downloadModels: (kind: "tts") => invoke<number>("download_models", { kind }),
-  /** 把译文写回源应用的选区。 */
-  writeBack: (text: string) => invoke<WriteBackResult>("write_back", { text }),
-  /** 撤回上一次回填。 */
-  undoWriteBack: () => invoke<string>("undo_write_back"),
   openModelDir: (kind: "ocr" | "tts") =>
     invoke<void>("open_model_dir", { kind }),
   /** 只合成不播放（流式朗读用）。 */

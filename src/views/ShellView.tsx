@@ -109,9 +109,6 @@ function CardView({
   speakOriginal,
   speakTranslation,
   onRetry,
-  onWriteBack,
-  onUndo,
-  writeBackState,
 }: {
   card: Card;
   sections: CardSections | null;
@@ -127,12 +124,6 @@ function CardView({
   speakTranslation: boolean;
   /** 翻译失败后重试：把状态复位成 idle，翻译 effect 会再跑一次。 */
   onRetry: () => void;
-  /** 把译文写回源应用；`screenshot` 卡片不提供。 */
-  onWriteBack?: (text: string) => void;
-  /** 撤回上一次回填。 */
-  onUndo?: () => void;
-  /** 这张卡片的回填状态：`undefined` 没写过，`done` 已写，`busy` 进行中。 */
-  writeBackState?: "busy" | "done";
 }) {
   const entry = card.entry;
 
@@ -176,22 +167,6 @@ function CardView({
               `${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
           </p>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            {/* 回填：把译文写回原应用；截图卡片没有可写控件，所以不显示 */}
-            {onWriteBack && card.original && translation.status === "done" && (
-              <button
-                type="button"
-                onClick={() => onWriteBack(translation.text)}
-                disabled={writeBackState === "busy"}
-                className="hud-btn"
-              >
-                {t("hudWriteBack")}
-              </button>
-            )}
-            {onUndo && writeBackState === "done" && (
-              <button type="button" onClick={onUndo} className="hud-btn">
-                {t("hudUndoWriteBack")}
-              </button>
-            )}
             {/* 两个朗读入口：原文与译文分开。读英文原文想听中文译文，就点第二个。 */}
             {onSpeak && speakOriginal && (card.original ?? "").trim().length > 0 && (
               <button type="button" onClick={() => onSpeak(card.original as string)} className="hud-btn">
@@ -340,12 +315,6 @@ function CardView({
 
 export function ShellView() {
 
-  /** 回填状态：按卡片 id 记，避免影响其它卡片。 */
-  const [writeBack, setWriteBack] = useState<{
-    cardId: number;
-    state: "busy" | "done";
-    message: string;
-  } | null>(null);
 
   useHudLifecycle();
   useRuntimeInfo();
@@ -361,36 +330,6 @@ export function ShellView() {
   const [speechReady, setSpeechReady] = useState(false);
   /** 标题栏显示"这条信息从哪来、多快"，取最底层那张卡。 */
   const rootCard = cards[0] ?? null;
-
-  /** 把当前译写回源应用。 */
-  const handleWriteBack = (cardId: number, text: string) => {
-    setWriteBack({ cardId, state: "busy", message: "" });
-    void ipc
-      .writeBack(text)
-      .then((result) => {
-        // 原生替换能读回校验，粘贴路径读不到——分别提示
-        setWriteBack({
-          cardId,
-          state: "done",
-          message: result.verified ? "" : "已粘贴，未能校验",
-        });
-      })
-      .catch((error: unknown) => {
-        void ipc.logFrontend("error", `write_back failed: ${String(error)}`);
-        setWriteBack(null);
-      });
-  };
-
-  const handleUndo = (cardId: number) => {
-    setWriteBack({ cardId, state: "busy", message: "" });
-    void ipc
-      .undoWriteBack()
-      .then(() => setWriteBack(null))
-      .catch((error: unknown) => {
-        void ipc.logFrontend("error", `undo_write_back failed: ${String(error)}`);
-        setWriteBack(null);
-      });
-  };
 
   const contentRef = useRef<HTMLDivElement>(null);
   const lastRequested = useRef(0);
@@ -648,16 +587,6 @@ export function ShellView() {
                   speakOriginal={settings?.speakOriginal ?? true}
                   speakTranslation={settings?.speakTranslation ?? true}
                   onRetry={() => setTranslation(card.id, { status: "idle" })}
-                  // 只有原生编辑控件才提供回填；浏览器等一律不给按钮
-                  onWriteBack={
-                    card.canWriteBack
-                      ? (text) => handleWriteBack(card.id, text)
-                      : undefined
-                  }
-                  onUndo={() => handleUndo(card.id)}
-                  writeBackState={
-                    writeBack?.cardId === card.id ? writeBack.state : undefined
-                  }
                 />
               </div>
             ))}

@@ -1,6 +1,10 @@
-# Agent Note: 原地回填（M6）
+# Agent Note: 原地回填（M6，原生路径）
 
 Status: implemented
+Archived: 2026-11-06
+
+> 被取代：`implemented/feature/2026-11-06-browser-extension-write-back.md`。
+> 原生 `EM_REPLACESEL` 对浏览器无效，用户要求改用浏览器扩展方案，原生路径整体删除。
 
 ## 问题
 

@@ -57,11 +57,6 @@ pub fn try_run() -> bool {
             lookup(&args);
             true
         }
-        "--write-back" => {
-            crate::platform::console::attach_parent();
-            write_back(&args);
-            true
-        }
         "--clipboard-roundtrip" => {
             crate::platform::console::attach_parent();
             clipboard_roundtrip();
@@ -1140,33 +1135,4 @@ fn clipboard_roundtrip() {
             "还原失败（检查格式支持）"
         }
     );
-}
-/// 对**当前焦点控件**做一次原地回填（手工验证用）。
-fn write_back(args: &[String]) {
-    let Some(text) = args.get(1) else {
-        eprintln!("用法：lemma.exe --write-back \"<要写入的文本>\"");
-        return;
-    };
-    let report = crate::platform::uia_write_probe();
-    let target = report.focused.or(report.at_point);
-    let Some(target) = target else {
-        println!("拿不到焦点控件");
-        return;
-    };
-    let control = target.element.hwnd as isize;
-    let source = crate::platform::window_top_level(control);
-    println!(
-        "目标：{} / {} / {}（控件 hwnd={control}，顶层 hwnd={source}）",
-        target.element.process_name, target.element.name, target.element.class_name
-    );
-    match crate::platform::replace_selection(source, control, text) {
-        Ok(outcome) => {
-            println!("方式：{}", outcome.method.as_str());
-            if !outcome.verified.is_empty() {
-                let preview: String = outcome.verified.chars().take(80).collect();
-                println!("写后读回：{preview:?}");
-            }
-        }
-        Err(error) => println!("失败：{error}"),
-    }
 }
