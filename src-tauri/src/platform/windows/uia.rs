@@ -449,6 +449,10 @@ fn range_text(range: &IUIAutomationTextRange) -> String {
 }
 
 fn describe(element: &IUIAutomationElement) -> ElementInfo {
+    // SAFETY: 纯查询；不支持时返回错误，被 unwrap_or 吃掉。
+    let hwnd = unsafe { element.CurrentNativeWindowHandle() }
+        .map(|value| value.0 as i64)
+        .unwrap_or(0);
     // SAFETY: 全是 Current* 只读属性查询，失败就留空，不影响其它字段。
     let pid = unsafe { element.CurrentProcessId() }.unwrap_or(0) as u32;
 
@@ -459,6 +463,7 @@ fn describe(element: &IUIAutomationElement) -> ElementInfo {
         automation_id: bstr(unsafe { element.CurrentAutomationId() }),
         process_id: pid,
         process_name: process_name(pid),
+        hwnd,
         bounds: unsafe { element.CurrentBoundingRectangle() }
             .ok()
             .map(|rect: RECT| [rect.left, rect.top, rect.right, rect.bottom]),

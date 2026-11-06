@@ -165,3 +165,15 @@ pub fn clipboard_restore(snapshot: &backend::ClipboardSnapshot) -> bool {
 pub fn clipboard_is_empty() -> bool {
     backend::clipboard_is_empty()
 }
+/// 原地回填：把译文写回源窗口的选区。
+pub fn replace_selection(
+    source: isize,
+    control: isize,
+    text: &str,
+) -> Result<backend::ReplaceOutcome, String> {
+    backend::replace_selection(source, control, text)
+}
+/// 取控件的顶层窗口句柄。
+pub fn window_top_level(handle: isize) -> isize {
+    backend::top_level(handle)
+}

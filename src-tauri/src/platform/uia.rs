@@ -45,6 +45,8 @@ pub struct ElementInfo {
     pub automation_id: String,
     pub process_id: u32,
     pub process_name: String,
+    /// 控件自身的窗口句柄（0 = 不可用）。回填靠它定位 `EM_REPLACESEL` 的目标。
+    pub hwnd: i64,
     /// 控件矩形（物理像素）。取不到时为 None。
     pub bounds: Option<[i32; 4]>,
 }
