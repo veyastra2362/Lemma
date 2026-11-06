@@ -63,6 +63,7 @@ pub fn run() {
             commands::update_settings,
             commands::close_settings,
             commands::lookup_word,
+            commands::download_models,
             commands::translate_text,
             commands::speak_text,
             commands::synthesize_speech,
@@ -215,6 +216,29 @@ pub fn run() {
                     }
                     Err(error) => logs::line(format!("speak smoke failed: {error}")),
                 }
+            }
+            // 模型下载冒烟：LEMMA_DOWNLOAD_SMOKE=tts|ocr 直接跑一遍下载链路
+            if let Ok(kind) = std::env::var("LEMMA_DOWNLOAD_SMOKE") {
+                let handle = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    let started = std::time::Instant::now();
+                    let assets: &[crate::core::fetch::Asset] = if kind == "ocr" {
+                        crate::core::fetch::OCR
+                    } else {
+                        crate::core::fetch::TTS
+                    };
+                    let result = tauri::async_runtime::spawn_blocking(move || {
+                        crate::core::fetch::fetch(assets, |_| {})
+                    })
+                    .await;
+                    logs::line(format!(
+                        "download smoke {kind} → {:?} ({:.1}s)",
+                        result.map_err(|e| e.to_string()),
+                        started.elapsed().as_secs_f64()
+                    ));
+                    let _ = handle;
+                });
             }
             // 浮层卡片冒烟：LEMMA_HUD_SMOKE_CARD="<text>" 直接塞一张卡片再弹浮层，
             // 用来核对卡片排版（真实取词需要焦点，自动化时不可靠）。

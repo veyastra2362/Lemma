@@ -69,8 +69,8 @@ pnpm tauri build --no-bundle
 | --- | --- | --- |
 | 中文分词 + 中文词释义 | CC-CEDICT 文本（`cedict.txt`） | `lemma.exe --import-cedict data\cedict.txt` |
 | 翻译 | 无需配置（Google 免密） | 开箱可用；要更好质量可在设置里填 OpenAI 兼容接口 |
-| 截图 OCR | `ocr-models\`：`det.onnx` / `rec.onnx` / `ppocr_keys_v1.txt` | 来源见 [`docs/ONNX-PROBE.md`](docs/ONNX-PROBE.md) |
-| 朗读 | `tts-models\`：`kokoro-zh-q8.onnx` / `tokenizer.json` / `zf_001.bin` / `cmudict.dict` | 同上 |
+| 截图 OCR | `ocr-models\`：`det.onnx` / `rec.onnx` / `ppocr_keys_v1.txt` | 设置 → 本地模型 →「下载」（13.6 MiB） |
+| 朗读 | `tts-models\`：`kokoro-zh-q8.onnx` / `tokenizer.json` / `zf_001.bin` / `cmudict.dict` | 设置 → 本地模型 →「下载」（84 MiB） |
 | 汉语词典（可选，中文释义） | chinese-xinhua 的 `word.json`（汉字）+ `ci.json`（词语），共 28 万条 | `lemma.exe --import-zh-defs <目录>`；实测导入 1.9 秒、词库 +1.7 MB |
 
 模型权重不进仓库也不进安装包（`*.onnx` 已在 `.gitignore` 里）。缺文件时相关入口会隐藏或给出
@@ -137,7 +137,7 @@ lemma.exe --help
 | 词库查询 | 2.0 µs/次（77 万条） |
 | OCR | 热态 ~87 ms/张（12 张基准集平均），冷态多约 250 ms 建会话 |
 | 朗读 | RTF 0.8–1.5×；分句后首句延迟 5.8 s（含冷启动） |
-| NSIS 安装包 | **128.83 MiB**（含 OCR / 朗读模型与英汉词库） |
+| NSIS 安装包 | **31.16 MiB**（含英汉词库；OCR/朗读模型按需下载） |
 
 > 「常驻 30–60 MB」只能指 Rust 主进程。整个进程树私有约 172 MB，96% 是 WebView2 的
 > 浏览器 / 渲染 / GPU 进程——任何 WebView 方案都有这个底噪。**报数字必须带口径。**

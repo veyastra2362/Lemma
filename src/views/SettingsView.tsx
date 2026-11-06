@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { listen } from "@tauri-apps/api/event";
 import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t } from "../i18n";
 import { ipc, isTauri } from "../lib/ipc";
@@ -275,12 +276,21 @@ function ModelRow({
   ready,
   dir,
   onOpen,
+  download,
 }: {
   label: string;
   ready: boolean;
   dir: string;
   onOpen: () => void;
+  download?: {
+    /** 按钮文字，如「下载（84 MiB）」。 */
+    label: string;
+    /** 正在下载时的进度 0..1；null 表示没在下载。 */
+    progress: number | null;
+    onClick: () => void;
+  };
 }) {
+  const busy = download?.progress != null;
   return (
     <div className="border-b border-[var(--hud-border-soft)] py-2.5 last:border-b-0">
       <div className="flex items-center gap-2">
@@ -289,15 +299,36 @@ function ModelRow({
           <i />
           {ready ? t("settingsModelReady") : t("settingsModelMissing")}
         </span>
-        <button type="button" onClick={onOpen} className="set-btn ml-auto">
-          {t("settingsModelOpen")}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {download && !ready && (
+            <button
+              type="button"
+              onClick={download.onClick}
+              disabled={busy}
+              className="set-btn"
+            >
+              {busy
+                ? `${Math.round((download.progress ?? 0) * 100)}%`
+                : download.label}
+            </button>
+          )}
+          <button type="button" onClick={onOpen} className="set-btn">
+            {t("settingsModelOpen")}
+          </button>
+        </div>
       </div>
+      {busy && (
+        <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-[var(--hud-border-soft)]">
+          <div
+            className="h-full rounded-full bg-[var(--hud-accent)] transition-[width] duration-200"
+            style={{ width: `${Math.round((download?.progress ?? 0) * 100)}%` }}
+          />
+        </div>
+      )}
       <p className="mt-1 break-all font-mono text-[12px] text-[var(--hud-faint)]">{dir}</p>
     </div>
   );
 }
-
 export function SettingsView() {
   useRuntimeInfo();
   const stats = useAppStore((state) => state.stats);
@@ -308,6 +339,8 @@ export function SettingsView() {
 
   /** 左侧导航高亮项：跟着右侧滚动位置走，不是"当前显示哪一页"。 */
   const [active, setActive] = useState<Category>("trigger");
+  /** 按需下载的进度：kind → 0..1，null 表示没在下载。 */
+  const [downloading, setDownloading] = useState<Record<string, number | null>>({});
   const scrollRef = useRef<HTMLElement | null>(null);
   /** 点击导航后的一小段时间内不让滚动高亮改写选中项。 */
   const lockUntil = useRef(0);
@@ -376,6 +409,56 @@ export function SettingsView() {
       .modelStatus()
       .then(setModels)
       .catch(() => setModels(null));
+  }, []);
+
+  /** 重新读一次模型状态（下载完成后调用）。 */
+  const refreshModels = useCallback(() => {
+    if (!isTauri()) {
+      return;
+    }
+    void ipc
+      .modelStatus()
+      .then(setModels)
+      .catch(() => setModels(null));
+  }, []);
+
+  /** 点了下载按钮：进度靠 `models://download` 事件推过来，完成后刷新状态。 */
+  const startDownload = useCallback(
+    (kind: "tts" | "ocr") => {
+      setDownloading((prev) => ({ ...prev, [kind]: 0 }));
+      void ipc
+        .downloadModels(kind)
+        .then((count) => {
+          void ipc.logFrontend("info", `models download ${kind} ok files=${count}`);
+          refreshModels();
+        })
+        .catch((error: unknown) => {
+          void ipc.logFrontend("error", `models download ${kind} failed: ${String(error)}`);
+        })
+        .finally(() => {
+          setDownloading((prev) => ({ ...prev, [kind]: null }));
+        });
+    },
+    [refreshModels],
+  );
+
+  // 下载进度事件
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen<{ kind: string; done: number; total: number }>("models://download", (event) => {
+      const { kind, done, total } = event.payload;
+      if (!total) {
+        return;
+      }
+      setDownloading((prev) => ({ ...prev, [kind]: Math.min(1, done / total) }));
+    })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch((error: unknown) => {
+        void ipc.logFrontend("error", `listen models://download failed: ${String(error)}`);
+      });
+    return () => unlisten?.();
   }, []);
 
   // Esc 关闭设置窗口（录制热键时由录制逻辑优先处理）。
@@ -583,12 +666,22 @@ export function SettingsView() {
                 ready={models?.ocrReady ?? false}
                 dir={models?.ocrDir ?? "—"}
                 onOpen={() => openDir("ocr")}
+                download={{
+                  label: "下载（13.6 MiB）",
+                  progress: downloading.ocr ?? null,
+                  onClick: () => startDownload("ocr"),
+                }}
               />
               <ModelRow
                 label={t("settingsModelTts")}
                 ready={models?.ttsReady ?? false}
                 dir={models?.ttsDir ?? "—"}
                 onOpen={() => openDir("tts")}
+                download={{
+                  label: "下载（84 MiB）",
+                  progress: downloading.tts ?? null,
+                  onClick: () => startDownload("tts"),
+                }}
               />
               <div className="border-b border-[var(--hud-border-soft)] py-2.5 last:border-b-0">
                 <div className="flex items-center gap-2">

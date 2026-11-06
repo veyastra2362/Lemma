@@ -58,7 +58,7 @@ const zhCN = {
   speakBusy: "合成中…",
   speakFailed: "朗读失败",
   settingsSectionModels: "本地模型",
-  settingsModelsHint: "OCR 与朗读模型已随安装包提供，首次启动自动就位；也可自行替换。",
+  settingsModelsHint: "安装包只带程序与英汉词库；OCR 与朗读模型按需下载，点右侧按钮即可，下完自动就位。",
   settingsModelDict: "英汉词库",
   settingsModelDictHint: "ECDICT 77 万英文词 + CC-CEDICT 12.5 万中文词，中英互译与分词都依赖它，已随安装包提供。",
   settingsModelOcr: "OCR 模型",

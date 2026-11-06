@@ -497,3 +497,35 @@ pub fn report_first_paint(app: AppHandle, perf: State<'_, Perf>, seq: u64) {
         crate::core::logs::line(format!("perf stale first-paint seq={seq} ignored"));
     }
 }
+/// 按需下载可选模型（`kind` = `tts` / `ocr`）。
+///
+/// 必须是 `async` 命令：同步命令跑在主线程上，下载几十 MB 会把整个界面卡死。
+#[tauri::command]
+pub async fn download_models(app: AppHandle, kind: String) -> Result<usize, String> {
+    let assets: &[crate::core::fetch::Asset] = match kind.as_str() {
+        "tts" => crate::core::fetch::TTS,
+        "ocr" => crate::core::fetch::OCR,
+        other => return Err(format!("未知的模型类型：{other}")),
+    };
+
+    let kind_for_task = kind.clone();
+    let app_for_task = app.clone();
+    // 下载是阻塞 IO，丢到独立线程，再用 emit 把进度送回前端
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::core::fetch::fetch(assets, |progress| {
+            let _ = app_for_task.emit("models://download", &progress);
+        })
+    })
+    .await
+    .map_err(|e| format!("下载任务失败：{e}"))?;
+
+    match &result {
+        Ok(count) => crate::core::logs::line(format!(
+            "models download ok kind={kind_for_task} files={count}"
+        )),
+        Err(error) => crate::core::logs::line(format!(
+            "models download failed kind={kind_for_task}: {error}"
+        )),
+    }
+    result
+}

@@ -10,16 +10,26 @@ Status: implemented
 
 ## 决定
 
-`bundle.resources` 带 `models/ocr/*`、`models/tts/*`、`models/dict.redb`，首次启动把缺失的文件复制到应用数据目录。
+安装包只带**程序 + 英汉词库**（`models/dict.redb`，128.5 MB，压缩后 23.9 MiB），
+OCR 与朗读模型改成设置页里的**下载按钮**（`core::fetch`）。
 
-其中 `dict.redb` 是**只含 ECDICT + CC-CEDICT** 的干净词库（128.5 MB，中英互译与中文分词都依赖它）。
-汉语词典（chinese-xinhua）不在其中：那份数据版权归属不明确，仍由用户 `--import-zh-defs` 自取。
+| 部分 | 原始 | 装进安装包后 |
+| --- | --- | --- |
+| 中文朗读（Kokoro q8） | 125.4 MB | 84.1 MiB |
+| OCR（PP-OCRv4 mobile） | 14.9 MB | 13.6 MiB |
+| 英汉词库 | 128.5 MB | 23.9 MiB |
 
-- 权重仍**不进仓库**：`.gitignore` 增加 `src-tauri/models/`（整目录，不只是 `*.onnx`——
-  `cmudict.dict` / `zf_001.bin` / `ppocr_keys_v1.txt` / `tokenizer.json` 也会被提交）。
-  仓库保持干净，但本机构建需要有这批文件；换机器先补齐 `src-tauri/models/`。
-- 只在**文件不存在时**复制：用户可以自己替换或删掉模型，安装包不会覆盖。
-- 复制发生在 `setup` 最前（`core::bundle::seed_models`），早于 `models_ready()` 判断。
+朗读一个人占安装包的 65%，是把它拿出安装包的唯一理由；OCR 虽小但同样做成了可下载
+（机制是同一套代码，顺带把「装完还要不要截图」的选择权给用户）。
+
+下载器要点：
+
+- 源默认 `https://github.com/veyastra2362/Lemma/releases/download/models-v1/<文件名>`，
+  可用 `LEMMA_MODEL_BASE_URL` 覆盖（本地用 `python -m http.server` 就能验证全链路）。
+- 每个文件带 SHA-256：校验不过**删掉半成品**并报错，不会留下坏模型。
+- 已存在且大小一致的文件直接跳过，重复点按钮不会白下 84 MiB。
+- 下载跑在 `spawn_blocking` 的独立线程里，进度用 `models://download` 事件推给设置页
+  （同步命令会卡主线程，见 AGENTS 第 7 条）。
 
 ## 备选方案
 
@@ -39,7 +49,7 @@ Status: implemented
 
 | 指标 | 改前 | 改后 |
 | --- | --- | --- |
-| NSIS 安装包 | 6.19 MB | **128.83 MiB** |
+| NSIS 安装包 | 6.19 MB | **31.16 MiB**（装完下载模型后 31.16 + 97.7） |
 | 全新用户首次启动（含复制 140 MB） | 1835 ms | **1173 ms** |
 | 磁盘占用 | 数据目录 140 MB | 安装目录 268 MB + 数据目录 268 MB |
 
