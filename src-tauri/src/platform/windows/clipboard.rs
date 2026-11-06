@@ -297,8 +297,3 @@ pub(crate) fn is_empty() -> bool {
         count == 0
     }
 }
-
-/// 剪贴板里有没有文本（T2 回退取词要用）。
-pub(crate) fn has_text() -> bool {
-    unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT).is_ok() }
-}
