@@ -75,3 +75,32 @@ pub struct ProbeReport {
     /// 整体失败原因（拿不到 UIA 客户端等）。
     pub error: Option<String>,
 }
+/// 回填可行性探针的结果。
+///
+/// M6 的「原地回填」要先回答一个问题：**这个控件能不能被程序写入**。
+/// UI Automation 里能用来的只有 `ValuePattern.SetValue` 和
+/// `LegacyIAccessiblePattern.SetValue`；`TextPattern` 的 range 是**只读**的
+/// （ITextRangeProvider 根本没有 SetText），所以浏览器/Word 这类基于 TextPattern
+/// 的控件只能退回「模拟输入」。
+/// 单个控件的写入能力。
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct WriteTarget {
+    pub element: ElementInfo,
+    pub patterns: Vec<String>,
+    pub value_readonly: Option<bool>,
+    pub legacy: bool,
+    pub selection_chars: usize,
+    /// ValuePattern 的内容预览（前 40 字），用来核对"写入是否真的生效"。
+    pub value_preview: String,
+    /// `value` / `legacy` / `text-only` / `none`
+    pub writable: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct WriteProbe {
+    /// `GetFocusedElement()` 拿到的控件。
+    pub focused: Option<WriteTarget>,
+    /// 光标位置下的控件（产品取词走的那条路）。
+    pub at_point: Option<WriteTarget>,
+    pub elapsed_ms: f64,
+}

@@ -137,3 +137,7 @@ pub fn restore_clipboard(previous: Option<&str>, after_seq: u32) {
 pub fn flush_compositor() {
     backend::flush_compositor();
 }
+/// 回填可行性探针（M6）：报告焦点控件能否被写入、走哪条路。
+pub fn uia_write_probe() -> uia::WriteProbe {
+    backend::uia_write_probe()
+}

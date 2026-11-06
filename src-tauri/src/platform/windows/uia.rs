@@ -45,6 +45,9 @@ enum Job {
     Capture {
         reply: Sender<UiaOutcome>,
     },
+    WriteProbe {
+        reply: Sender<crate::platform::uia::WriteProbe>,
+    },
 }
 
 static JOB_TX: OnceLock<Sender<Job>> = OnceLock::new();
@@ -178,6 +181,9 @@ fn worker() -> Result<&'static Sender<Job>, String> {
                 }
                 Job::Capture { reply } => {
                     let _ = reply.send(run_capture(&automation));
+                }
+                Job::WriteProbe { reply } => {
+                    let _ = reply.send(write_probe_on(&automation));
                 }
             }
         }
@@ -522,4 +528,94 @@ pub(crate) fn detect_patterns(element: &IUIAutomationElement) -> Vec<String> {
     );
 
     found
+}
+/// 回填可行性探针：只在**焦点控件**上查能力，不做任何写入。
+pub(crate) fn uia_write_probe() -> crate::platform::uia::WriteProbe {
+    let Some(tx) = worker_checked() else {
+        return crate::platform::uia::WriteProbe {
+            elapsed_ms: 0.0,
+            ..Default::default()
+        };
+    };
+    let (reply_tx, reply_rx) = mpsc::channel();
+    if tx.send(Job::WriteProbe { reply: reply_tx }).is_err() {
+        return crate::platform::uia::WriteProbe {
+            elapsed_ms: 0.0,
+            ..Default::default()
+        };
+    }
+    reply_rx.recv().unwrap_or_default()
+}
+
+/// 在 UIA 工作线程里跑（那台线程才有 `IUIAutomation` 实例）。
+fn write_probe_on(automation: &IUIAutomation) -> crate::platform::uia::WriteProbe {
+    use crate::platform::uia::WriteProbe;
+
+    let started = Instant::now();
+    let focused = (unsafe { automation.GetFocusedElement() })
+        .ok()
+        .map(|element| probe_target(&element));
+
+    let mut point = POINT::default();
+    // SAFETY: point 是本栈帧上的有效可写结构。
+    let at_point = if unsafe { GetCursorPos(&mut point) }.is_ok() {
+        (unsafe { automation.ElementFromPoint(point) })
+            .ok()
+            .map(|element| probe_target(&element))
+    } else {
+        None
+    };
+
+    WriteProbe {
+        focused,
+        at_point,
+        elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
+    }
+}
+
+/// 查一个控件能不能写、走哪条路。
+fn probe_target(element: &IUIAutomationElement) -> crate::platform::uia::WriteTarget {
+    use crate::platform::uia::WriteTarget;
+
+    let mut target = WriteTarget {
+        element: describe(element),
+        patterns: detect_patterns(element),
+        ..Default::default()
+    };
+
+    // ValuePattern：IsReadOnly = false 才能写
+    if let Ok(value) =
+        unsafe { element.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId) }
+    {
+        target.value_readonly = unsafe { value.CurrentIsReadOnly() }
+            .ok()
+            .map(|flag| flag.as_bool());
+        if let Ok(current) = unsafe { value.CurrentValue() } {
+            let text: String = current.to_string();
+            target.value_preview = text.chars().take(40).collect();
+        }
+    }
+    target.legacy = target
+        .patterns
+        .iter()
+        .any(|name| name == "LegacyIAccessible");
+
+    // 选区长度：没有选区就没有"原地替换"的对象
+    if let Ok(pattern) =
+        unsafe { element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId) }
+        && let Some(range) = read_selection(&pattern)
+    {
+        target.selection_chars = range_text(&range).chars().count();
+    }
+
+    target.writable = if target.value_readonly == Some(false) {
+        "value".to_string()
+    } else if target.legacy && target.value_readonly.is_none() {
+        "legacy".to_string()
+    } else if target.patterns.iter().any(|name| name == "Text") {
+        "text-only".to_string()
+    } else {
+        "none".to_string()
+    };
+    target
 }

@@ -57,6 +57,11 @@ pub fn try_run() -> bool {
             lookup(&args);
             true
         }
+        "--write-probe" => {
+            crate::platform::console::attach_parent();
+            write_probe();
+            true
+        }
         "--import-zh-defs" => {
             crate::platform::console::attach_parent();
             import_zh_defs(&args);
@@ -1059,4 +1064,37 @@ fn normalize_explanation(raw: &str) -> String {
         last_newline = false;
     }
     out.trim().to_string()
+}
+/// 回填可行性探针：报告**当前焦点控件**能不能被程序写入。
+fn write_probe() {
+    let report = crate::platform::uia_write_probe();
+    print_target("焦点控件", report.focused.as_ref());
+    print_target("光标处控件", report.at_point.as_ref());
+    println!("耗时     : {:.1} ms", report.elapsed_ms);
+}
+
+fn print_target(label: &str, target: Option<&crate::platform::uia::WriteTarget>) {
+    println!("--- {label} ---");
+    let Some(target) = target else {
+        println!("  拿不到");
+        return;
+    };
+    let element = &target.element;
+    println!("  应用   : {}", element.process_name);
+    println!("  控件   : {} / {}", element.name, element.class_name);
+    println!("  类型   : {}", element.control_type);
+    println!("  Pattern: {}", target.patterns.join(", "));
+    println!(
+        "  Value  : {}",
+        match target.value_readonly {
+            Some(true) => "只读（不可写）",
+            Some(false) => "可写",
+            None => "无 ValuePattern",
+        }
+    );
+    println!("  选区   : {} 字符", target.selection_chars);
+    if !target.value_preview.is_empty() {
+        println!("  Value 内容: {:?}", target.value_preview);
+    }
+    println!("  结论   : {}", target.writable);
 }
