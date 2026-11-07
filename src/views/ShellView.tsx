@@ -181,7 +181,7 @@ function CardView({
                 disabled={writeBackState === "busy"}
                 className="hud-btn"
               >
-                {writeBackState === "done" ? t("hudWriteBackDone") : t("hudWriteBack")}
+                {t("hudWriteBack")}
               </button>
             )}
             {/* 两个朗读入口：原文与译文分开。读英文原文想听中文译文，就点第二个。 */}

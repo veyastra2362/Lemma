@@ -65,8 +65,9 @@ pub fn run() {
     // 任何日志写进 stdout 都会把帧头写坏（实测：日志混进去后浏览器读到的"长度"是乱的）。
     crate::core::logs::silence_stdout();
 
-    // 词库与翻译都要用；词库缺失不致命（翻译仍可用）
-    let _ = crate::core::dict::open_default();
+    // 绝对不要在这里打开词库：redb 是**独占锁**，宿主抢先打开会让主程序
+    // 再也打不开词库（表现为"英汉词库没了"、查词全部失败）。
+    // 宿主只需要 translate（走网络），用不到词库。
 
     // 翻译链路里有跨 await 的锁；单线程 runtime 会自锁（实测卡死 30 秒无响应）
     let runtime = match tokio::runtime::Builder::new_multi_thread()
