@@ -6,6 +6,31 @@
 ;
 ; 用户数据（设置、词库、模型，约 270 MB）单独问：默认保留，避免误删。
 
+; ---------------------------------------------------------------------------
+; 安装：用户选的是普通目录时，自动装进它的 Lemma 子目录
+;
+; 这个宏在 `SetOutPath $INSTDIR` 之后、`File` 拷贝之前执行，所以改 $INSTDIR 对后续
+; 的文件写入、卸载器、注册表项全部生效（它们都在这之后才执行）。
+; 之前那次 SetOutPath 可能已经建出一个（空的）目录，用 RMDir 清掉——
+; **RMDir 只删空目录**，用户本来就有的目录绝不会被误删。
+; ---------------------------------------------------------------------------
+!macro NSIS_HOOK_PREINSTALL
+  ${If} $INSTDIR != ""
+    ; 先去掉结尾的反斜杠，避免 D:\Apps\ 变成 D:\Apps\\Lemma
+    StrCpy $R7 $INSTDIR "" -1
+    ${If} $R7 == "\"
+      StrCpy $INSTDIR $INSTDIR -1
+    ${EndIf}
+    StrCpy $R9 $INSTDIR "" -6
+    ${If} $R9 != "\Lemma"
+      StrCpy $R8 $INSTDIR
+      StrCpy $INSTDIR "$INSTDIR\Lemma"
+      RMDir $R8
+      SetOutPath $INSTDIR
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 !macro NSIS_HOOK_PREUNINSTALL
   ; ---- 原生宿主登记 ----
   DeleteRegKey HKCU "Software\Google\Chrome\NativeMessagingHosts\dev.lunar.lemma"
@@ -15,6 +40,7 @@
   Delete "$APPDATA\Mozilla\NativeMessagingHosts\dev.lunar.lemma.json"
 
   ; ---- 用户数据（可选）----
+  ; MessageBox 在静默卸载（/S）下走 /SD 默认值 = IDNO，即**保留**数据。
   IfFileExists "$APPDATA\dev.lunar.lemma\*.*" 0 done_data
     MessageBox MB_YESNO|MB_DEFBUTTON2 \
       "是否一并删除 Lemma 的用户数据？$\r$\n$\r$\n包括：设置、翻译缓存、词库与 OCR/朗读模型（约 270 MB）。$\r$\n位置：$APPDATA\dev.lunar.lemma" \
