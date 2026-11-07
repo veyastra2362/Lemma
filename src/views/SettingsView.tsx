@@ -828,7 +828,6 @@ export function SettingsView() {
 
           <section id="set-extension" className="mb-7">
               <h2 className="set-h">{t("settingsSectionExtension")}</h2>
-              <p className="set-desc">{t("settingsExtensionHint")}</p>
               <Row label={t("settingsExtensionInstall")} hint={t("settingsExtensionMissing")}>
                 <button
                   type="button"
