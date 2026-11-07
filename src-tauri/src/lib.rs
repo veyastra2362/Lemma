@@ -360,6 +360,20 @@ pub fn run() {
                                     }
                                 }
                             }
+                            // 复现"截图后点双栏"这条链路（含 open_reader 的门槛判断）
+                            if std::env::var("LEMMA_READER_AFTER_OCR").is_ok() {
+                                let text = capture.text.clone();
+                                let app = handle.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let outcome = crate::commands::open_reader(
+                                        app,
+                                        text,
+                                        "smoke".to_string(),
+                                    )
+                                    .await;
+                                    logs::line(format!("open_reader after ocr → {outcome:?}"));
+                                });
+                            }
                             logs::line(format!(
                                 "region smoke ok chars={} text={}",
                                 capture.text.chars().count(),

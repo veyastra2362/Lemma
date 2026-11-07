@@ -619,8 +619,11 @@ export function ShellView() {
                   onWord={openWord}
                   collapsed={index < mounted.length - 1}
                   onOpenReader={
-                    // 双栏只给截图结果：选词时 HUD 已经并排显示原文与译文，再开窗口是多余的
-                    settings?.readerOpenMode !== "off" && card.screenshot ? openReader : null
+                    // 双栏只给**根卡片**的截图结果：payload 只保留最近一次截图，
+                    // 较早的卡片点开就会看到与卡片不符的图（实测踩到过）。
+                    settings?.readerOpenMode !== "off" && card.screenshot && index === 0
+                      ? openReader
+                      : null
                   }
                   onSpeak={speechReady ? speak : null}
                   speakOriginal={settings?.speakOriginal ?? true}

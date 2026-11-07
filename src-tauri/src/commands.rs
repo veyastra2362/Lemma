@@ -246,8 +246,21 @@ pub async fn open_reader(app: AppHandle, text: String, source: String) -> Result
     }
     // 双栏定位为**截图的对照阅读**：一屏文字 + 逐块对照才有意义。
     // 选一个词/一句话时 HUD 里本来就是原文+译文并排，再开个窗口重复一遍是多余的。
-    let has_image = crate::core::reader::payload()
+    let payload = crate::core::reader::payload();
+    let has_image = payload
+        .as_ref()
         .is_some_and(|payload| payload.image.is_some() && payload.text == text);
+    crate::core::logs::line(format!(
+        "open_reader gate: payload={} image={} text_eq={} req={}B payload_text={}B",
+        payload.is_some(),
+        payload.as_ref().is_some_and(|p| p.image.is_some()),
+        payload.as_ref().is_some_and(|p| p.text == text),
+        text.chars().count(),
+        payload
+            .as_ref()
+            .map(|p| p.text.chars().count())
+            .unwrap_or(0),
+    ));
     if !has_image {
         return Err("双栏只用来看截图对照；选词结果直接在 HUD 里看即可".to_string());
     }
