@@ -561,6 +561,8 @@ export function ShellView() {
               void ipc.hudHide().catch(() => undefined);
             }}
             className="hud-ico"
+            // 开着「光标远离自动收起」时不显示关闭按钮：移开鼠标就消失了（Telegram 的做法）
+            style={settings?.autoHideByCursor === false ? undefined : { display: "none" }}
           >
             <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
   <path d="M2.5 2.5 L9.5 9.5 M9.5 2.5 L2.5 9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />

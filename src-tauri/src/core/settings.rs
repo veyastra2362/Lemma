@@ -118,6 +118,11 @@ pub struct Settings {
     /// 是否显示 HUD 底部那排快捷键提示。
     #[serde(default = "default_true")]
     pub show_hints: bool,
+    /// 光标离开浮层一定距离后自动收起（默认开）。
+    ///
+    /// 开着时浮层不再需要 ✕ 按钮——移开鼠标就消失了（Telegram 的做法）。
+    #[serde(default = "default_true")]
+    pub auto_hide_by_cursor: bool,
     /// 朗读语速（Kokoro 的 speed 参数，1.0 为原速）。
     #[serde(default = "default_speech_speed")]
     pub speech_speed: f32,
@@ -229,6 +234,7 @@ impl Default for Settings {
             capture_mode: default_capture_mode(),
             hud_max_height: default_hud_max_height(),
             show_hints: true,
+            auto_hide_by_cursor: true,
             speech_speed: default_speech_speed(),
             zh_defs: true,
             extension_write_back: true,

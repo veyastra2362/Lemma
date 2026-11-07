@@ -107,6 +107,8 @@ export interface Settings {
   extensionWriteBack: boolean;
   /** HUD 上是否显示「回填」按钮。 */
   hudWriteBack: boolean;
+  /** 光标离开浮层一定距离就自动收起（开着时隐藏 ✕）。 */
+  autoHideByCursor: boolean;
   /** 强调色（整套 UI 只有一个）。 */
   accent: Accent;
   /** 卡片上是否显示「朗读原文」。 */

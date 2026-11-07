@@ -141,6 +141,8 @@ const zhCN = {
   settingsSectionCard: "卡片显示内容",
   settingsSectionSize: "HUD 最大高度",
   settingsSectionLooks: "界面",
+  settingsAutoHide: "光标移开自动关闭",
+  settingsAutoHideHint: "鼠标离开浮层一定距离就自动收起（约 200 像素）。开着时不显示 ✕ 按钮，移开即消失。",
   settingsShowHints: "显示快捷键提示",
   settingsShowHintsHint: "关掉后各处（HUD 底部、双栏词条、框选层）的快捷键提示都不再显示。",
   settingsClose: "关闭设置",

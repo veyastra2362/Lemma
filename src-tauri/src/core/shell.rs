@@ -92,6 +92,82 @@ pub fn present<R: Runtime>(app: &AppHandle<R>) {
 
     // 前端收到后必须在下一帧回报 report_first_paint(seq)。
     let _ = app.emit("hud://presented", seq);
+
+    if app
+        .state::<crate::core::settings::SettingsStore>()
+        .get()
+        .auto_hide_by_cursor
+    {
+        spawn_proximity_watch(app.clone());
+    }
+}
+
+/// 光标离浮层多远就自动收起（物理像素；125% 缩放下约 200 逻辑像素）。
+const AUTO_HIDE_RADIUS: f64 = 260.0;
+
+/// 每次 present 递增，旧的看门狗看到代数变化就退出，避免多个线程同时盯同一个浮层。
+static WATCH_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 盯着光标：离开浮层超过 `AUTO_HIDE_RADIUS` 就收起。
+///
+/// 规则刻意保守：
+/// - 弹出后先等 700ms（此时鼠标通常停在刚选中的词上）；
+/// - 必须"先靠近过再离开"才收——托盘打开的浮层不会因为鼠标本来就在远处而秒关；
+/// - 连续 3 次（约 300ms）判定为远才收，避免手抖/穿边。
+fn spawn_proximity_watch<R: Runtime>(app: AppHandle<R>) {
+    let generation = WATCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(700));
+        let mut was_near = false;
+        let mut far_ticks = 0;
+
+        loop {
+            if WATCH_GEN.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            let Some(window) = app.get_webview_window(HUD_LABEL) else {
+                return;
+            };
+            if !window.is_visible().unwrap_or(false) {
+                return;
+            }
+
+            if let (Some(cursor), Ok(origin), Ok(size)) = (
+                crate::platform::cursor_position(),
+                window.outer_position(),
+                window.outer_size(),
+            ) {
+                let dx = distance_axis(cursor.x as f64, origin.x as f64, size.width as f64);
+                let dy = distance_axis(cursor.y as f64, origin.y as f64, size.height as f64);
+                let distance = (dx * dx + dy * dy).sqrt();
+
+                if distance <= AUTO_HIDE_RADIUS {
+                    was_near = true;
+                    far_ticks = 0;
+                } else if was_near {
+                    far_ticks += 1;
+                    if far_ticks >= 3 {
+                        logs::line("hud auto-hide: cursor moved away");
+                        hide(&app);
+                        return;
+                    }
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    });
+}
+
+/// 点到区间 [start, start+len] 的距离（在区间内为 0）。
+fn distance_axis(value: f64, start: f64, len: f64) -> f64 {
+    if value < start {
+        start - value
+    } else if value > start + len {
+        value - (start + len)
+    } else {
+        0.0
+    }
 }
 
 /// 收起 HUD。调用方通常是前端失焦 / Esc。

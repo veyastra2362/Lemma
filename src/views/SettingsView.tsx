@@ -947,6 +947,13 @@ export function SettingsView() {
                   {settings?.hudMaxHeight ?? 420} px
                 </span>
               </Row>
+              <Row label={t("settingsAutoHide")} hint={t("settingsAutoHideHint")}>
+                <Switch
+                  on={settings?.autoHideByCursor ?? true}
+                  label={t("settingsAutoHide")}
+                  onChange={(on) => apply({ autoHideByCursor: on })}
+                />
+              </Row>
               <Row label={t("settingsShowHints")}>
                 <Switch
                   on={settings?.showHints ?? true}
