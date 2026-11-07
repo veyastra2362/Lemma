@@ -105,6 +105,8 @@ export interface Settings {
   zhDefs: boolean;
   /** 是否允许浏览器扩展用本应用回填。 */
   extensionWriteBack: boolean;
+  /** HUD 上是否显示「回填」按钮。 */
+  hudWriteBack: boolean;
   /** 强调色（整套 UI 只有一个）。 */
   accent: Accent;
   /** 卡片上是否显示「朗读原文」。 */

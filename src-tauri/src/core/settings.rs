@@ -131,6 +131,9 @@ pub struct Settings {
     /// 关掉后宿主会直接拒绝扩展的请求（扩展留在浏览器里也不会生效）。
     #[serde(default = "default_true")]
     pub extension_write_back: bool,
+    /// HUD 上是否显示「回填」按钮（走浏览器扩展）。
+    #[serde(default = "default_true")]
+    pub hud_write_back: bool,
     /// 强调色。
     #[serde(default = "default_accent")]
     pub accent: Accent,
@@ -229,6 +232,7 @@ impl Default for Settings {
             speech_speed: default_speech_speed(),
             zh_defs: true,
             extension_write_back: true,
+            hud_write_back: true,
             accent: default_accent(),
             speak_original: true,
             speak_translation: true,

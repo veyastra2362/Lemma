@@ -185,6 +185,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "lemma:apply-last") {
+    sendResponse(applyLast(message.text));
+    return true;
+  }
+
   if (message?.type === "lemma:undo") {
     sendResponse({ ok: undo() });
     return true;
@@ -201,3 +206,42 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 /** 上一次 pick 的可写目标（Range / 表单元素），只在本次页面生命周期内有效。 */
 let pending = null;
+// ---- 供"应用推送回填"使用的最近一次选区 ----
+//
+// 应用通过 UIA 取词时并不经过扩展，所以扩展不知道用户选了哪段。
+// 这里在 selectionchange 时把范围存下来（只是 clone 一个 Range，开销可以忽略），
+// 应用点「回填」时直接用这份。
+let remembered = null;
+
+function remember() {
+  const info = currentSelectionInfo();
+  remembered = info ? { info, at: Date.now() } : remembered;
+}
+
+document.addEventListener("selectionchange", remember, { passive: true });
+window.addEventListener("mouseup", remember, { passive: true });
+window.addEventListener("keyup", remember, { passive: true });
+
+/** 应用推送来的替换：用记住的范围写入。 */
+function applyLast(text) {
+  if (!remembered) {
+    return { ok: false, error: "网页里没有记住的选区，请重新选中一段" };
+  }
+  // 超过 5 分钟的选区基本已经过期（页面可能已变）
+  if (Date.now() - remembered.at > 5 * 60 * 1000) {
+    remembered = null;
+    return { ok: false, error: "选区已过期，请重新选中" };
+  }
+  const info = remembered.info;
+  try {
+    if (info.kind === "field" && !info.element.isConnected) {
+      remembered = null;
+      return { ok: false, error: "输入框已不在页面上" };
+    }
+    const done = applyText(info, text);
+    remembered = null;
+    return done ? { ok: true } : { ok: false, error: "替换失败" };
+  } catch (error) {
+    return { ok: false, error: String(error?.message ?? error) };
+  }
+}

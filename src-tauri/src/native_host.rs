@@ -83,22 +83,109 @@ pub fn run() {
 
     let stdin = std::io::stdin();
     let mut input = stdin.lock();
-    let stdout = std::io::stdout();
-    let mut output = stdout.lock();
+    let output = std::sync::Arc::new(std::sync::Mutex::new(std::io::stdout()));
+
+    // 反向通道：GUI 点「回填」→ 管道 → 这里 → 写成帧推给扩展。
+    // 扩展回话的帧带 `id` 而不带 `method`，在下面的循环里按 id 派发。
+    let pending: Pending =
+        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+    {
+        let output = output.clone();
+        let pending = pending.clone();
+        crate::platform::serve_writeback_pipe(move |_gui_id, text| {
+            push_replace(&output, &pending, text)
+        });
+    }
 
     while let Some(body) = read_frame(&mut input) {
-        let response = match serde_json::from_slice::<Request>(&body) {
-            Ok(request) => handle(&runtime, request),
-            Err(error) => Response::err(format!("请求不是合法 JSON：{error}")),
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
+            let _ = write_response(&output, Response::err("请求不是合法 JSON"));
+            continue;
         };
-        let Ok(payload) = serde_json::to_vec(&response) else {
-            break;
+
+        // 扩展对推送的回应：{"id":N,"ok":true}
+        if let Some(id) = value.get("id").and_then(|v| v.as_u64()) {
+            let reply = if value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+                crate::platform::pipe::Reply::ok()
+            } else {
+                crate::platform::pipe::Reply::err(
+                    value
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("回填失败")
+                        .to_string(),
+                )
+            };
+            if let Some(tx) = pending.lock().ok().and_then(|mut map| map.remove(&id)) {
+                let _ = tx.send(reply);
+            }
+            continue;
+        }
+
+        let request = match serde_json::from_value::<Request>(value) {
+            Ok(request) => request,
+            Err(error) => {
+                let _ = write_response(&output, Response::err(format!("请求缺少 method：{error}")));
+                continue;
+            }
         };
-        if write_frame(&mut output, &payload).is_err() {
+        let response = handle(&runtime, request);
+        if write_response(&output, response).is_err() {
             break;
         }
     }
     crate::core::logs::line("native host: stdin closed, exiting");
+}
+
+/// 待回的推送请求：id → 收结果的通道。
+type Pending = std::sync::Arc<
+    std::sync::Mutex<
+        std::collections::HashMap<u64, std::sync::mpsc::Sender<crate::platform::pipe::Reply>>,
+    >,
+>;
+
+fn write_response(
+    output: &std::sync::Mutex<std::io::Stdout>,
+    response: Response,
+) -> std::io::Result<()> {
+    let payload = serde_json::to_vec(&response).map_err(std::io::Error::other)?;
+    write_frame(output, &payload)
+}
+
+/// 把「替换这段文本」推给扩展，并等它回话。
+fn push_replace(
+    output: &std::sync::Mutex<std::io::Stdout>,
+    pending: &Pending,
+    text: String,
+) -> crate::platform::pipe::Reply {
+    static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    if let Ok(mut map) = pending.lock() {
+        map.insert(id, tx);
+    }
+
+    let frame = serde_json::json!({ "type": "replace", "id": id, "text": text });
+    let Ok(payload) = serde_json::to_vec(&frame) else {
+        return crate::platform::pipe::Reply::err("序列化失败");
+    };
+    if write_frame(output, &payload).is_err() {
+        if let Ok(mut map) = pending.lock() {
+            map.remove(&id);
+        }
+        return crate::platform::pipe::Reply::err("宿主写不了 stdio（浏览器可能已断开）");
+    }
+
+    match rx.recv_timeout(std::time::Duration::from_secs(8)) {
+        Ok(reply) => reply,
+        Err(_) => {
+            if let Ok(mut map) = pending.lock() {
+                map.remove(&id);
+            }
+            crate::platform::pipe::Reply::err("浏览器没有响应（扩展未连接，或页面里没选中文本）")
+        }
+    }
 }
 
 fn handle(runtime: &tokio::runtime::Runtime, request: Request) -> Response {
@@ -195,8 +282,12 @@ fn read_frame(input: &mut impl Read) -> Option<Vec<u8>> {
     Some(body)
 }
 
-fn write_frame(output: &mut impl Write, payload: &[u8]) -> std::io::Result<()> {
-    output.write_all(&(payload.len() as u32).to_le_bytes())?;
-    output.write_all(payload)?;
-    output.flush()
+fn write_frame(output: &std::sync::Mutex<std::io::Stdout>, payload: &[u8]) -> std::io::Result<()> {
+    // 长度头 + 正文必须一次写完，否则两个线程交错会把帧写坏
+    let mut stdout = output
+        .lock()
+        .map_err(|_| std::io::Error::other("stdout 锁被污染"))?;
+    stdout.write_all(&(payload.len() as u32).to_le_bytes())?;
+    stdout.write_all(payload)?;
+    stdout.flush()
 }

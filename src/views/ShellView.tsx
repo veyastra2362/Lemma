@@ -109,6 +109,8 @@ function CardView({
   speakOriginal,
   speakTranslation,
   onRetry,
+  onWriteBack,
+  writeBackState,
 }: {
   card: Card;
   sections: CardSections | null;
@@ -124,6 +126,10 @@ function CardView({
   speakTranslation: boolean;
   /** 翻译失败后重试：把状态复位成 idle，翻译 effect 会再跑一次。 */
   onRetry: () => void;
+  /** 回填（走浏览器扩展）；不传表示不显示按钮。 */
+  onWriteBack?: (text: string) => void;
+  /** 回填状态：进行中/成功，用于按钮文案。 */
+  writeBackState?: "busy" | "done";
 }) {
   const entry = card.entry;
 
@@ -167,6 +173,17 @@ function CardView({
               `${translation.cached ? t("translateCached") : translation.provider} ${translation.elapsedMs.toFixed(0)}ms`}
           </p>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {/* 回填：走浏览器扩展把译文写回网页（外部程序改不了 DOM，只能由扩展做） */}
+            {onWriteBack && card.original && translation.status === "done" && (
+              <button
+                type="button"
+                onClick={() => onWriteBack(translation.text)}
+                disabled={writeBackState === "busy"}
+                className="hud-btn"
+              >
+                {writeBackState === "done" ? t("hudWriteBackDone") : t("hudWriteBack")}
+              </button>
+            )}
             {/* 两个朗读入口：原文与译文分开。读英文原文想听中文译文，就点第二个。 */}
             {onSpeak && speakOriginal && (card.original ?? "").trim().length > 0 && (
               <button type="button" onClick={() => onSpeak(card.original as string)} className="hud-btn">
@@ -315,6 +332,26 @@ function CardView({
 
 export function ShellView() {
 
+
+  /** 回填状态：按卡片 id 记，避免影响其它卡片。 */
+  const [writeBack, setWriteBack] = useState<{
+    cardId: number;
+    state: "busy" | "done";
+    error: string | null;
+  } | null>(null);
+
+  /** 点「回填」：交给浏览器扩展去改 DOM。 */
+  const handleWriteBack = (cardId: number, text: string) => {
+    setWriteBack({ cardId, state: "busy", error: null });
+    void ipc
+      .writeBack(text)
+      .then(() => setWriteBack({ cardId, state: "done", error: null }))
+      .catch((error: unknown) => {
+        const message = String(error);
+        void ipc.logFrontend("error", `write_back failed: ${message}`);
+        setWriteBack({ cardId, state: "done", error: message });
+      });
+  };
 
   useHudLifecycle();
   useRuntimeInfo();
@@ -587,6 +624,15 @@ export function ShellView() {
                   speakOriginal={settings?.speakOriginal ?? true}
                   speakTranslation={settings?.speakTranslation ?? true}
                   onRetry={() => setTranslation(card.id, { status: "idle" })}
+                  // 只有"从网页取词"的卡片才谈得上回填；截图卡片没有网页选区
+                  onWriteBack={
+                    card.screenshot || settings?.hudWriteBack === false
+                      ? undefined
+                      : (text) => handleWriteBack(card.id, text)
+                  }
+                  writeBackState={
+                    writeBack?.cardId === card.id ? writeBack.state : undefined
+                  }
                 />
               </div>
             ))}

@@ -68,6 +68,7 @@ pub fn run() {
             commands::extension_status,
             commands::install_extension,
             commands::open_url,
+            commands::write_back,
             commands::translate_text,
             commands::speak_text,
             commands::synthesize_speech,

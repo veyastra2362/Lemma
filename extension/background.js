@@ -1,59 +1,112 @@
 // Lemma 回填 —— background service worker
 //
-// 职责：
-//   1. 与本地 Lemma 应用通信（Native Messaging，宿主名 `dev.lunar.lemma`）
-//   2. 把「翻译并回填」的请求转给 content script
+// 两条链路：
+//   A. 扩展主动：右键菜单 / 快捷键 → 让宿主翻译 → 自己替换页面
+//   B. 应用主动：HUD 上点「回填」→ 应用写命名管道 → 宿主推帧过来 → 这里派给页面
 //
-// 协议见 docs/EXTENSION.md。宿主侧实现在 src-tauri/src/native_host.rs：
-// stdio 上是「4 字节小端长度 + UTF-8 JSON」，Chrome/Firefox 会替我们做这层封装。
+// 为了 B，必须保持一条**常驻**的 connectNative 连接（Chrome 允许宿主在连接存活期间
+// 持续发消息；顺便让 MV3 的 service worker 不被回收）。断线后按退避重连。
 
 const HOST = "dev.lunar.lemma";
 
-/** 与宿主的一次往返。 */
-function callHost(message) {
-  return new Promise((resolve, reject) => {
-    let port;
-    try {
-      port = chrome.runtime.connectNative(HOST);
-    } catch (error) {
-      reject(new Error(`连不上 Lemma（${error.message}）。桌面应用装了吗？`));
+let port = null;
+let retry = 0;
+
+function connect() {
+  if (port) {
+    return port;
+  }
+  try {
+    port = chrome.runtime.connectNative(HOST);
+  } catch (error) {
+    scheduleReconnect();
+    return null;
+  }
+
+  port.onMessage.addListener((message) => {
+    // 应用推过来的「替换这段文本」
+    if (message?.type === "replace") {
+      applyFromApp(message.id, message.text);
       return;
     }
+    pendingByRequest.get(message?.requestId)?.(message);
+  });
 
-    let settled = false;
-    const finish = (fn, value) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      try {
-        port.disconnect();
-      } catch {
-        /* 已经断了就算了 */
-      }
-      fn(value);
-    };
+  port.onDisconnect.addListener(() => {
+    port = null;
+    const detail = chrome.runtime.lastError?.message;
+    if (detail) {
+      console.warn("[Lemma] 宿主断开：", detail);
+    }
+    scheduleReconnect();
+  });
 
-    port.onMessage.addListener((response) => {
-      if (response && response.ok) {
-        finish(resolve, response);
+  retry = 0;
+  return port;
+}
+
+function scheduleReconnect() {
+  retry = Math.min(retry + 1, 6);
+  // 1s、2s、4s…最多 32s，避免宿主没装好时把 CPU 烧了
+  const delay = Math.min(1000 * 2 ** (retry - 1), 32000);
+  setTimeout(connect, delay);
+}
+
+/** 与宿主的一次性请求（ping / translate）。 */
+const pendingByRequest = new Map();
+let nextRequestId = 1;
+
+function callHost(message) {
+  return new Promise((resolve, reject) => {
+    const active = connect();
+    if (!active) {
+      reject(new Error("连不上 Lemma（桌面应用装了吗？）"));
+      return;
+    }
+    const requestId = nextRequestId++;
+    pendingByRequest.set(requestId, (response) => {
+      pendingByRequest.delete(requestId);
+      if (response?.ok) {
+        resolve(response);
       } else {
-        finish(reject, new Error(response?.error || "宿主返回了失败"));
+        reject(new Error(response?.error || "宿主返回失败"));
       }
     });
+    active.postMessage({ ...message, requestId });
 
-    port.onDisconnect.addListener(() => {
-      const detail = chrome.runtime.lastError?.message ?? "宿主已断开";
-      finish(reject, new Error(detail));
-    });
-
-    port.postMessage(message);
+    // 兜底：10 秒没有回话就当失败（翻译走网络，留足时间）
+    setTimeout(() => {
+      if (pendingByRequest.delete(requestId)) {
+        reject(new Error("宿主没有响应"));
+      }
+    }, 10000);
   });
 }
 
-/** 让某个标签页的 content script 做事。 */
+/** 应用推送来的替换请求：交给当前标签页的 content script。 */
+async function applyFromApp(id, text) {
+  let reply = { id, ok: false, error: "没有活动标签页" };
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) {
+      throw new Error("没有活动标签页");
+    }
+    const applied = await askTab(tab.id, { type: "lemma:apply-last", text });
+    reply = applied?.ok
+      ? { id, ok: true }
+      : { id, ok: false, error: applied?.error ?? "替换失败" };
+  } catch (error) {
+    reply = { id, ok: false, error: String(error?.message ?? error) };
+  }
+  // 回给宿主（宿主再通过管道回给应用）
+  try {
+    connect()?.postMessage(reply);
+  } catch {
+    /* 宿主没了就算了 */
+  }
+}
+
 async function askTab(tabId, message) {
-  // 页面刷新后 content script 会没；先 ping 一下，失败就注入
   try {
     return await chrome.tabs.sendMessage(tabId, message);
   } catch {
@@ -62,25 +115,19 @@ async function askTab(tabId, message) {
   }
 }
 
-/** 「翻译并回填」主流程。 */
-async function translateAndReplace(tabId, frameId) {
+async function translateAndReplace(tabId) {
   const picked = await askTab(tabId, { type: "lemma:pick" });
   if (!picked?.ok) {
     return { ok: false, error: picked?.error ?? "没有选中的文本" };
   }
-
   const translated = await callHost({ method: "translate", text: picked.text });
-  const applied = await askTab(tabId, {
-    type: "lemma:apply",
-    text: translated.text,
-  });
+  const applied = await askTab(tabId, { type: "lemma:apply", text: translated.text });
   if (!applied?.ok) {
     return { ok: false, error: applied?.error ?? "替换失败" };
   }
-  return { ok: true, original: picked.text, text: translated.text };
+  return { ok: true };
 }
 
-/** 往页面角上弹一句提示（content script 负责画）。 */
 function toast(tabId, text, kind) {
   chrome.tabs.sendMessage(tabId, { type: "lemma:toast", text, kind }).catch(() => {});
 }
@@ -95,20 +142,20 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
   toast(tab.id, "翻译中…", "busy");
   try {
-    const result = await translateAndReplace(tab.id, 0);
+    const result = await translateAndReplace(tab.id);
     toast(tab.id, result.ok ? "已回填" : `失败：${result.error}`, result.ok ? "ok" : "error");
   } catch (error) {
     toast(tab.id, `失败：${error.message}`, "error");
   }
 });
 
-// 右键菜单：选中文本 →「用 Lemma 翻译并回填」
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "lemma-replace",
     title: "用 Lemma 翻译并回填",
     contexts: ["selection"],
   });
+  connect();
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -117,9 +164,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
   toast(tab.id, "翻译中…", "busy");
   try {
-    const result = await translateAndReplace(tab.id, 0);
+    const result = await translateAndReplace(tab.id);
     toast(tab.id, result.ok ? "已回填" : `失败：${result.error}`, result.ok ? "ok" : "error");
   } catch (error) {
     toast(tab.id, `失败：${error.message}`, "error");
   }
 });
+
+// service worker 被唤醒时把连接补上
+chrome.runtime.onStartup.addListener(connect);
+connect();

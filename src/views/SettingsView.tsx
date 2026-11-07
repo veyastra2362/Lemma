@@ -876,6 +876,13 @@ export function SettingsView() {
                   {t("settingsExtensionInstallAction")}
                 </button>
               </Row>
+              <Row label={t("settingsHudWriteBack")} hint={t("settingsHudWriteBackHint")}>
+                <Switch
+                  on={settings?.hudWriteBack ?? true}
+                  label={t("settingsHudWriteBack")}
+                  onChange={(on) => apply({ hudWriteBack: on })}
+                />
+              </Row>
               <Row label={t("settingsExtensionEnabled")} hint={t("settingsExtensionEnabledHint")}>
                 <Switch
                   on={settings?.extensionWriteBack ?? true}

@@ -572,3 +572,21 @@ pub fn open_url(app: AppHandle, url: String) -> Result<(), String> {
         .open_url(url, None::<&str>)
         .map_err(|e| format!("打开失败：{e}"))
 }
+/// 通过浏览器扩展把 `text` 写回网页原文位置。
+///
+/// 这条路径替代了原来的原生回填：外部程序改不了网页 DOM，
+/// 只能让扩展去做（应用 → 管道 → 宿主 → 扩展 → content script）。
+#[tauri::command]
+pub fn write_back(text: String) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Err("没有可回填的内容".to_string());
+    }
+    let started = std::time::Instant::now();
+    let result = crate::core::writeback::replace(&text);
+    crate::core::logs::line(format!(
+        "write_back via extension → {:?} ({:.0}ms)",
+        result.as_ref().err(),
+        started.elapsed().as_secs_f64() * 1000.0
+    ));
+    result
+}
