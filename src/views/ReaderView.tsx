@@ -106,10 +106,15 @@ const READER_STYLES = `
     color: var(--hud-faint);
     vertical-align: baseline;
     cursor: pointer;
-    opacity: 0.55;
+    /* 平时不显示，鼠标移到这一句上才出现——不打扰阅读，也不占视觉重量 */
+    opacity: 0;
     transition: opacity var(--hud-t) ease-out, color var(--hud-t) ease-out;
   }
+  .rv-line:hover .rv-speak,
+  .rv-speak:focus-visible { opacity: 1; }
   .rv-speak:hover { opacity: 1; color: var(--hud-accent); }
+  /* 正在朗读这一句：常亮，提示"再点一次就是停" */
+  .rv-speak.is-on { opacity: 1; color: var(--hud-accent); }
   .rv-block {
     display: flex; gap: 8px; align-items: flex-start;
     padding: 2px 0; margin-bottom: 10px;
@@ -139,9 +144,12 @@ const READER_STYLES = `
 
 /** 每句末尾的朗读按钮（原文侧与译文侧共用）。 */
 function SpeakLine({
+  active,
   onSpeak,
   label,
 }: {
+  /** 这一句正在朗读（再点一次就是停）。 */
+  active: boolean;
   onSpeak: () => void;
   label: string;
 }) {
@@ -154,7 +162,7 @@ function SpeakLine({
       }}
       title={label}
       aria-label={label}
-      className="rv-speak"
+      className={`rv-speak ${active ? "is-on" : ""}`}
     >
       <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" fill="none">
         <path d="M2 4.5h1.8L6 2.6v6.8L3.8 7.5H2z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
@@ -183,10 +191,8 @@ export function ReaderView() {
   const [showHints, setShowHints] = useState(true);
   /** 跟读：正在朗读的词（全局序号），null 表示没在朗读。 */
   const [spokenWord, setSpokenWord] = useState<number | null>(null);
-  /** 是否正在朗读（含"读译文"，那种情况不逐词高亮）。 */
-  const [speaking, setSpeaking] = useState(false);
-  /** 正在读的是原文还是译文。 */
-  const [speakingSource, setSpeakingSource] = useState<"original" | "translation" | null>(null);
+  /** 正在朗读的那一句；用来让对应的喇叭高亮、再点一次即停止。 */
+  const [speakingText, setSpeakingText] = useState<string | null>(null);
   const speakTimer = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -210,8 +216,7 @@ export function ReaderView() {
       speakTimer.current = null;
     }
     setSpokenWord(null);
-    setSpeaking(false);
-    setSpeakingSource(null);
+    setSpeakingText(null);
     void ipc.stopSpeaking();
   }, []);
 
@@ -234,8 +239,7 @@ export function ReaderView() {
   const startSpeaking = useCallback(
     (text: string, source: "original" | "translation" = "original") => {
       const highlight = source === "original";
-      setSpeaking(true);
-      setSpeakingSource(source);
+      setSpeakingText(text);
       if (speakTimer.current !== null) {
         window.clearTimeout(speakTimer.current);
         speakTimer.current = null;
@@ -255,8 +259,7 @@ export function ReaderView() {
       const fail = (reason: unknown) => {
         stopped = true;
         setSpokenWord(null);
-        setSpeaking(false);
-        setSpeakingSource(null);
+        setSpeakingText(null);
         void ipc.logFrontend("error", "reader speak failed: " + String(reason));
       };
 
@@ -287,8 +290,7 @@ export function ReaderView() {
         }
         if (index >= sentences.length) {
           setSpokenWord(null);
-          setSpeaking(false);
-          setSpeakingSource(null);
+          setSpeakingText(null);
           speakTimer.current = null;
           return;
         }
@@ -601,14 +603,23 @@ export function ReaderView() {
     return (
       <p
         key="done"
-        className={`fade-in ${compact ? "text-[12px] leading-[1.6]" : "text-[13.5px] leading-[1.75]"}`}
+        className={`rv-line fade-in ${compact ? "text-[12px] leading-[1.6]" : "text-[13.5px] leading-[1.75]"}`}
       >
         {/* 译文这一侧允许点中文（查汉语词典）；原文那一侧不允许，避免误触 */}
         {renderClickable(block.text, -1, true)}
-        <SpeakLine
-          onSpeak={() => speakAs("translation", block.text)}
-          label="朗读这一句译文"
-        />
+        {speechReady && speakTranslation && (
+          <SpeakLine
+            active={speakingText === block.text}
+            onSpeak={() => {
+              if (speakingText === block.text) {
+                stopSpeaking();
+              } else {
+                speakAs("translation", block.text);
+              }
+            }}
+            label="朗读这一句译文"
+          />
+        )}
       </p>
     );
   };
@@ -676,13 +687,7 @@ export function ReaderView() {
   // 气泡内容与位置（hover 时才算，避免每次渲染都量布局）
   const bubble = hovered === null ? null : bubbleFor(hovered);
 
-  /** 译文全文（按块拼起来），供「朗读译文」使用。 */
-  const translationText = blocks
-    .map((block) => (block.status === "done" ? (block as { text: string }).text : ""))
-    .filter((text) => text.trim().length > 0)
-    .join(" ");
-
-  const speakAs = (source: "original" | "translation", text: string) => {
+const speakAs = (source: "original" | "translation", text: string) => {
     startSpeaking(text, source);
   };
 
@@ -718,38 +723,7 @@ export function ReaderView() {
         )}
 
         <div className="ml-auto flex items-center gap-1.5">
-          {speechReady && speakOriginal && (content?.text ?? "").trim().length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                if (speaking) {
-                  stopSpeaking();
-                } else {
-                  startSpeaking(content?.text ?? "");
-                }
-              }}
-              className={`rv-btn ${speakingSource === "original" && speaking ? "is-on" : ""}`}
-            >
-              {speakingSource === "original" && speaking ? t("speakStop") : t("speakOriginal")}
-            </button>
-          )}
-          {speechReady && speakTranslation && translationText.trim().length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                if (speakingSource === "translation" && speaking) {
-                  stopSpeaking();
-                } else {
-                  speakAs("translation", translationText);
-                }
-              }}
-              className={`rv-btn ${speakingSource === "translation" && speaking ? "is-on" : ""}`}
-            >
-              {speakingSource === "translation" && speaking
-                ? t("speakStop")
-                : t("speakTranslation")}
-            </button>
-          )}
+          {/* 整篇朗读入口已去掉：每句末尾的喇叭更精确，顶部两个按钮与它重复 */}
           <button
             type="button"
             onClick={() => void ipc.closeReader()}
@@ -857,12 +831,21 @@ export function ReaderView() {
                     0,
                   );
                 return (
-                  <p key={index} className="mb-3 text-[13.5px] leading-[1.75]">
+                  <p key={index} className="rv-line mb-3 text-[13.5px] leading-[1.75]">
                     {renderClickable(block, baseWord)}
-                    <SpeakLine
-                      onSpeak={() => speakAs("original", block)}
-                      label="朗读这一句"
-                    />
+                    {speechReady && speakOriginal && (
+                      <SpeakLine
+                        active={speakingText === block}
+                        onSpeak={() => {
+                          if (speakingText === block) {
+                            stopSpeaking();
+                          } else {
+                            speakAs("original", block);
+                          }
+                        }}
+                        label="朗读这一句"
+                      />
+                    )}
                   </p>
                 );
               })
