@@ -36,6 +36,16 @@ pub fn try_run() -> bool {
         return false;
     };
 
+    // 浏览器拉起 Native Messaging 宿主时，**会把扩展标识作为第一个参数**传进来：
+    //   Chrome: lemma.exe "chrome-extension://<id>/" --parent-window=0
+    //   Firefox: lemma.exe <extension-id>
+    // 所以不能只认 `--native-host`，否则会被当成未知参数去启动 GUI
+    // （表现为"宿主没有响应"，且每次重连都弹一个被单实例踢掉的进程）。
+    if is_native_messaging_invocation(command) {
+        crate::native_host::run();
+        return true;
+    }
+
     match command {
         "--help" | "-h" => {
             crate::platform::console::attach_parent();
@@ -1187,4 +1197,13 @@ fn package_extension_cli(args: &[String]) {
         ),
         Err(error) => println!("失败：{error}"),
     }
+}
+/// 浏览器是不是在把我们当 Native Messaging 宿主启动。
+///
+/// Chrome 传 `chrome-extension://<id>/`，Edge 同；Firefox 传扩展 ID 本身。
+fn is_native_messaging_invocation(first: &str) -> bool {
+    let first = first.trim();
+    first.starts_with("chrome-extension://")
+        || first.starts_with("moz-extension://")
+        || first == "lemma-writeback@lunar.dev"
 }
