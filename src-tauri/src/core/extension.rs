@@ -15,8 +15,12 @@ use std::path::{Path, PathBuf};
 const MANIFEST: &str = include_str!("../../../extension/manifest.json");
 const BACKGROUND: &str = include_str!("../../../extension/background.js");
 const CONTENT: &str = include_str!("../../../extension/content.js");
-const HOST_CHROME: &str = include_str!("../../../extension/host-chrome.json");
-const HOST_FIREFOX: &str = include_str!("../../../extension/host-firefox.json");
+
+/// 扩展 ID：由 `extension/manifest.json` 的 `key` 固定，宿主白名单写死它。
+pub const EXTENSION_ID: &str = "kchhodaiilomkholhbpajlgkblnikfpb";
+
+/// Firefox 用 gecko id 而不是 chrome extension id。
+const FIREFOX_EXTENSION_ID: &str = "lemma-writeback@lunar.dev";
 
 /// 宿主名，两处清单与扩展里必须一致。
 const HOST_NAME: &str = "dev.lunar.lemma";
@@ -84,8 +88,17 @@ pub fn install() -> InstallReport {
         .map(|path| path.display().to_string())
         .unwrap_or_default();
 
-    // Chrome / Edge 共用同一份清单文件，只是注册表位置不同
-    let chrome_manifest = HOST_CHROME.replace("__EXE_PATH__", &exe);
+    // Chrome / Edge 共用同一份清单文件，只是注册表位置不同。
+    // 注意：必须用 serde 序列化，不能字符串替换——Windows 路径里的 `\C` 在 JSON 里是
+    // 非法转义，Chrome 会因此报 "native messaging host not found"（实测踩到）。
+    let chrome_manifest = serde_json::to_string_pretty(&serde_json::json!({
+        "name": HOST_NAME,
+        "description": "Lemma 桌面应用的 Native Messaging 宿主",
+        "path": exe,
+        "type": "stdio",
+        "allowed_origins": [format!("chrome-extension://{EXTENSION_ID}/")],
+    }))
+    .unwrap_or_default();
     let Some(host_path) = host_manifest_path() else {
         report.error = Some("拿不到宿主清单目录".to_string());
         return report;
@@ -99,7 +112,14 @@ pub fn install() -> InstallReport {
 
     // Firefox 自己读清单，不需要注册表
     if let Some(firefox_path) = firefox_manifest_path() {
-        let firefox_manifest = HOST_FIREFOX.replace("__EXE_PATH__", &exe);
+        let firefox_manifest = serde_json::to_string_pretty(&serde_json::json!({
+            "name": HOST_NAME,
+            "description": "Lemma 桌面应用的 Native Messaging 宿主",
+            "path": exe,
+            "type": "stdio",
+            "allowed_extensions": [FIREFOX_EXTENSION_ID],
+        }))
+        .unwrap_or_default();
         match write_file(&firefox_path, &firefox_manifest) {
             Ok(()) => report.firefox_manifest = firefox_path.display().to_string(),
             Err(error) => {
