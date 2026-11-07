@@ -36,6 +36,11 @@ OS 特定 crate 必须写在 `Cargo.toml` 的 `[target.'cfg(...)'.dependencies]`
 1. **不要用裸 `cargo build --release` 验证前端**：`tauri-build` 会置 `cfg(dev)`，
    应用去加载 `http://localhost:1420`，结果就是白屏。一律用 `pnpm tauri build`。
    只想快速编译检查用 `cargo check` / `cargo clippy`。
+1.1 **`cargo build --release` 会污染 release 产物**：它产出的 `lemma.exe` 是 dev 配置，
+   启动后所有窗口加载 `http://localhost:1420`（表现为白屏 / "无法访问此页面"）。
+   我已经踩了两次。**改完要启动 GUI，一律重跑 `pnpm tauri build --no-bundle`。**
+   纯命令行验证（`--lookup` / `--native-host` 等）请用独立目录编译，别碰发布产物：
+   `cargo build --release --target-dir target/cli`。
 2. **`pnpm tauri build` 会校验 Rust crate 与 npm 包的 minor 版本一致**，不一致直接失败。
    crates.io 上的 `tauri` 稳定版是 2.11.6，而 npm 的 `@tauri-apps/api` 已到 2.12；
    因此 `@tauri-apps/api` 锁 `~2.11.1`，并且**不要**引入前端用不到的 `@tauri-apps/plugin-*` 包
