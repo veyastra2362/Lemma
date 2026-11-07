@@ -161,4 +161,6 @@ export interface ExtensionStatus {
   installed: boolean;
   dir: string;
   extensionId: string;
+  /** 扩展的 GitHub 下载地址。 */
+  downloadUrl: string;
 }

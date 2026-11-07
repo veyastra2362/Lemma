@@ -855,20 +855,18 @@ export function SettingsView() {
           <section id="set-extension" className="mb-7">
               <h2 className="set-h">{t("settingsSectionExtension")}</h2>
               <p className="set-desc">{t("settingsExtensionHint")}</p>
-              <Row
-                label={t("settingsExtensionInstall")}
-                hint={
-                  extension?.installed
-                    ? t("settingsExtensionInstalled")
-                    : t("settingsExtensionMissing")
-                }
-              >
+              <Row label={t("settingsExtensionInstall")} hint={t("settingsExtensionMissing")}>
                 <button
                   type="button"
                   onClick={() => {
+                    // 两件事一起做：① 写好宿主登记（这一步必须本地做）
+                    // ② 打开 GitHub 下载页，扩展由用户自己下载安装
                     void ipc
                       .installExtension()
-                      .then(setExtension)
+                      .then((status) => {
+                        setExtension(status);
+                        return ipc.openUrl(status.downloadUrl);
+                      })
                       .catch((error: unknown) => {
                         setError(String(error));
                       });

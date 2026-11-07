@@ -527,6 +527,8 @@ pub async fn download_models(app: AppHandle, kind: String) -> Result<usize, Stri
 pub struct ExtensionStatus {
     pub installed: bool,
     pub dir: String,
+    /// 扩展的 GitHub 下载地址（按钮跳这里）。
+    pub download_url: String,
     /// 扩展 ID 固定写死在 manifest 的 key 里，这里回显给界面提示用。
     pub extension_id: String,
 }
@@ -539,6 +541,7 @@ pub fn extension_status() -> ExtensionStatus {
             .map(|dir| dir.display().to_string())
             .unwrap_or_default(),
         extension_id: "kchhodaiilomkholhbpajlgkblnikfpb".to_string(),
+        download_url: crate::core::extension::DOWNLOAD_URL.to_string(),
     }
 }
 
@@ -556,4 +559,16 @@ pub fn install_extension() -> Result<ExtensionStatus, String> {
         return Err("注册表写入失败（Chrome/Edge 都没登记上），请检查权限".to_string());
     }
     Ok(extension_status())
+}
+/// 用系统默认浏览器打开一个网址（设置里的"获取扩展"按钮用）。
+#[tauri::command]
+pub fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    // 只允许 http(s)，避免被当成任意协议处理器调用
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err(format!("只允许打开网页地址：{url}"));
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("打开失败：{e}"))
 }

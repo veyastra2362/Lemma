@@ -109,3 +109,6 @@ pnpm-debug.log*
 
 # 模型权重与配套文件：作为安装包输入（src-tauri/models），但不进仓库
 src-tauri/models/
+
+# 扩展打包产物（上传到 GitHub Release，不进仓库）
+lemma-extension.zip

@@ -137,3 +137,36 @@ fn write_file(path: &Path, content: &str) -> Result<(), String> {
 fn register_chrome(manifest: &Path) -> bool {
     crate::platform::register_native_host(HOST_NAME, &manifest.display().to_string())
 }
+/// 扩展的 GitHub 下载地址（Release 资产）。
+pub const DOWNLOAD_URL: &str =
+    "https://github.com/veyastra2362/Lemma/releases/download/extension-v1/lemma-extension.zip";
+
+/// 把扩展的三个文件打成一个 zip（用户下载后解压即可加载）。
+///
+/// 为什么要打包：Chrome 只能"加载已解压的扩展程序"，让用户从 GitHub 一个个下载
+/// 三个文件太蠢；一个 zip 解压即用。
+pub fn package(out: &std::path::Path) -> Result<u64, String> {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    let mut buffer = std::io::Cursor::new(Vec::new());
+    {
+        let mut zip = zip::ZipWriter::new(&mut buffer);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for (name, content) in [
+            ("manifest.json", MANIFEST),
+            ("background.js", BACKGROUND),
+            ("content.js", CONTENT),
+        ] {
+            zip.start_file(name, options)
+                .map_err(|e| format!("写 zip 条目失败：{e}"))?;
+            zip.write_all(content.as_bytes())
+                .map_err(|e| format!("写 zip 内容失败：{e}"))?;
+        }
+        zip.finish().map_err(|e| format!("收尾失败：{e}"))?;
+    }
+    let bytes = buffer.into_inner();
+    std::fs::write(out, &bytes).map_err(|e| format!("写文件失败：{e}"))?;
+    Ok(bytes.len() as u64)
+}

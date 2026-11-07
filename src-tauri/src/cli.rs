@@ -67,6 +67,11 @@ pub fn try_run() -> bool {
             install_extension_cli();
             true
         }
+        "--package-extension" => {
+            crate::platform::console::attach_parent();
+            package_extension_cli(&args);
+            true
+        }
         "--native-host" => {
             // Chrome/Firefox 通过 stdio 与本进程通信，不挂控制台
             crate::native_host::run();
@@ -121,7 +126,18 @@ pub fn try_run() -> bool {
             translate(&args);
             true
         }
-        _ => false,
+        other => {
+            // 未知的 `--xxx` 不能默默启动 GUI：那会表现为"命令行没输出、0 秒退出"
+            // （单实例插件把第二个实例踢掉），排查起来极其费劲。踩过两次。
+            if other.starts_with('-') {
+                crate::platform::console::attach_parent();
+                eprintln!("未知参数：{other}\n");
+                print_help();
+                true
+            } else {
+                false
+            }
+        }
     }
 }
 
@@ -1155,5 +1171,20 @@ fn install_extension_cli() {
     println!("注册表     : {}", report.registry);
     if let Some(error) = report.error {
         println!("失败：{error}");
+    }
+}
+/// 把扩展打包成 zip（发 Release 用）。
+fn package_extension_cli(args: &[String]) {
+    let out = args
+        .get(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("lemma-extension.zip"));
+    match crate::core::extension::package(&out) {
+        Ok(bytes) => println!(
+            "已生成 {}（{:.1} KB）",
+            out.display(),
+            bytes as f64 / 1024.0
+        ),
+        Err(error) => println!("失败：{error}"),
     }
 }

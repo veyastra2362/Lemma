@@ -80,6 +80,8 @@ export const ipc = {
   extensionStatus: () => invoke<ExtensionStatus>("extension_status"),
   /** 一键安装扩展所需的宿主清单与注册表项。 */
   installExtension: () => invoke<ExtensionStatus>("install_extension"),
+  /** 用系统浏览器打开网页。 */
+  openUrl: (url: string) => invoke<void>("open_url", { url }),
   /** 按需下载可选模型，返回下载的文件数。 */
   downloadModels: (kind: "tts") => invoke<number>("download_models", { kind }),
   openModelDir: (kind: "ocr" | "tts") =>
