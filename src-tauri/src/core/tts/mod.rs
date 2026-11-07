@@ -222,6 +222,17 @@ pub fn encode_phonemes(phonemes: &str) -> Result<Vec<i64>, String> {
     Ok(ids)
 }
 
+/// 哪些字符在模型的音素词表里找不到（诊断"某段读不出来"用）。
+pub fn unmapped_chars(phonemes: &str) -> Vec<char> {
+    let Ok(vocab) = vocab() else {
+        return Vec::new();
+    };
+    phonemes
+        .chars()
+        .filter(|ch| !vocab.iter().any(|(symbol, _)| symbol.starts_with(*ch)))
+        .collect()
+}
+
 /// 从中文词条的拼音合成语音。
 pub fn speak_pinyin(pinyin: &str, speed: f32) -> Result<Speech, String> {
     let phonemes = phonemize::phonemize_pinyin(pinyin);

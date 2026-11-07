@@ -15,6 +15,10 @@ use std::path::{Path, PathBuf};
 const MANIFEST: &str = include_str!("../../../extension/manifest.json");
 const BACKGROUND: &str = include_str!("../../../extension/background.js");
 const CONTENT: &str = include_str!("../../../extension/content.js");
+const ICON_16: &[u8] = include_bytes!("../../../extension/icons/16.png");
+const ICON_32: &[u8] = include_bytes!("../../../extension/icons/32.png");
+const ICON_48: &[u8] = include_bytes!("../../../extension/icons/48.png");
+const ICON_128: &[u8] = include_bytes!("../../../extension/icons/128.png");
 
 /// 扩展 ID：由 `extension/manifest.json` 的 `key` 固定，宿主白名单写死它。
 pub const EXTENSION_ID: &str = "kchhodaiilomkholhbpajlgkblnikfpb";
@@ -144,6 +148,16 @@ fn write_extension(dir: &Path) -> Result<(), String> {
     ] {
         write_file(&dir.join(name), content)?;
     }
+    let icons = dir.join("icons");
+    std::fs::create_dir_all(&icons).map_err(|e| format!("建图标目录失败：{e}"))?;
+    for (name, bytes) in [
+        ("16.png", ICON_16),
+        ("32.png", ICON_32),
+        ("48.png", ICON_48),
+        ("128.png", ICON_128),
+    ] {
+        std::fs::write(icons.join(name), bytes).map_err(|e| format!("写图标失败：{e}"))?;
+    }
     Ok(())
 }
 
@@ -183,6 +197,17 @@ pub fn package(out: &std::path::Path) -> Result<u64, String> {
                 .map_err(|e| format!("写 zip 条目失败：{e}"))?;
             zip.write_all(content.as_bytes())
                 .map_err(|e| format!("写 zip 内容失败：{e}"))?;
+        }
+        for (name, bytes) in [
+            ("icons/16.png", ICON_16),
+            ("icons/32.png", ICON_32),
+            ("icons/48.png", ICON_48),
+            ("icons/128.png", ICON_128),
+        ] {
+            zip.start_file(name, options)
+                .map_err(|e| format!("写 zip 条目失败：{e}"))?;
+            zip.write_all(bytes)
+                .map_err(|e| format!("写图标失败：{e}"))?;
         }
         zip.finish().map_err(|e| format!("收尾失败：{e}"))?;
     }

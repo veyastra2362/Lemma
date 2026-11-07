@@ -94,6 +94,22 @@ const READER_STYLES = `
   }
   .rv-box.is-hot > .rv-num { color: var(--hud-accent); border-color: var(--hud-accent); }
   /* 右栏逐块译文：编号在行首，hover 时左侧出现一条陶土色竖线 */
+  .rv-speak {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px;
+    padding: 1px 3px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--hud-faint);
+    vertical-align: baseline;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity var(--hud-t) ease-out, color var(--hud-t) ease-out;
+  }
+  .rv-speak:hover { opacity: 1; color: var(--hud-accent); }
   .rv-block {
     display: flex; gap: 8px; align-items: flex-start;
     padding: 2px 0; margin-bottom: 10px;
@@ -120,6 +136,33 @@ const READER_STYLES = `
  * 两栏都可点词，点中入下探栈（与 HUD 的 Deck 同构），`Esc` 逐层退。
  * 窗口是隐藏复用的：内容靠 `reader://reload` 刷新，阅读位置按文本记忆。
  */
+
+/** 每句末尾的朗读按钮（原文侧与译文侧共用）。 */
+function SpeakLine({
+  onSpeak,
+  label,
+}: {
+  onSpeak: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onSpeak();
+      }}
+      title={label}
+      aria-label={label}
+      className="rv-speak"
+    >
+      <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" fill="none">
+        <path d="M2 4.5h1.8L6 2.6v6.8L3.8 7.5H2z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+        <path d="M8 4.2c.6.5.6 3.1 0 3.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
 export function ReaderView() {
   const [content, setContent] = useState<ReaderContent | null>(null);
   const [blocks, setBlocks] = useState<BlockState[]>([]);
@@ -562,6 +605,10 @@ export function ReaderView() {
       >
         {/* 译文这一侧允许点中文（查汉语词典）；原文那一侧不允许，避免误触 */}
         {renderClickable(block.text, -1, true)}
+        <SpeakLine
+          onSpeak={() => speakAs("translation", block.text)}
+          label="朗读这一句译文"
+        />
       </p>
     );
   };
@@ -812,6 +859,10 @@ export function ReaderView() {
                 return (
                   <p key={index} className="mb-3 text-[13.5px] leading-[1.75]">
                     {renderClickable(block, baseWord)}
+                    <SpeakLine
+                      onSpeak={() => speakAs("original", block)}
+                      label="朗读这一句"
+                    />
                   </p>
                 );
               })

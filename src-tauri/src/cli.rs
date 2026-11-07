@@ -82,6 +82,16 @@ pub fn try_run() -> bool {
             package_extension_cli(&args);
             true
         }
+        "--speak-wav" => {
+            crate::platform::console::attach_parent();
+            speak_wav_cli(&args);
+            true
+        }
+        "--phonemes" => {
+            crate::platform::console::attach_parent();
+            print_phonemes(&args);
+            true
+        }
         "--native-host" => {
             // Chrome/Firefox 通过 stdio 与本进程通信，不挂控制台
             crate::native_host::run();
@@ -1206,4 +1216,52 @@ fn is_native_messaging_invocation(first: &str) -> bool {
     first.starts_with("chrome-extension://")
         || first.starts_with("moz-extension://")
         || first == "lemma-writeback@lunar.dev"
+}
+/// 打印一段文本的音素串（诊断朗读用）。
+fn print_phonemes(args: &[String]) {
+    let Some(text) = args.get(1) else {
+        eprintln!("用法：lemma.exe --phonemes \"<文本>\"");
+        return;
+    };
+    match crate::core::tts::phonemes_for_text(text) {
+        Ok(phonemes) => {
+            println!("原文：{text}");
+            println!("音素：{phonemes}");
+            let missing = crate::core::tts::unmapped_chars(&phonemes);
+            if missing.is_empty() {
+                println!("词表：全部可编码");
+            } else {
+                println!("词表：读不出来的字符 → {:?}", missing);
+            }
+        }
+        Err(error) => println!("失败：{error}"),
+    }
+}
+/// 合成一句话并存成 wav（诊断朗读用）。第二个参数是输出路径。
+fn speak_wav_cli(args: &[String]) {
+    let Some(text) = args.get(1) else {
+        eprintln!("用法：lemma.exe --speak-wav \"<文本>\" <输出.wav>");
+        return;
+    };
+    let out = args
+        .get(2)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("speak.wav"));
+    let started = Instant::now();
+    match crate::core::tts::speak_text(text, 1.0) {
+        Ok(speech) => {
+            let seconds = speech.duration_secs();
+            if let Err(error) = std::fs::write(&out, speech.to_wav()) {
+                println!("写文件失败：{error}");
+                return;
+            }
+            println!(
+                "合成 {:.2}s 音频，用时 {}ms → {}",
+                seconds,
+                started.elapsed().as_millis(),
+                out.display()
+            );
+        }
+        Err(error) => println!("失败：{error}"),
+    }
 }
