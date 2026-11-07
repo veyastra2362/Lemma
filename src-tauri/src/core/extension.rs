@@ -171,9 +171,11 @@ fn write_file(path: &Path, content: &str) -> Result<(), String> {
 fn register_chrome(manifest: &Path) -> bool {
     crate::platform::register_native_host(HOST_NAME, &manifest.display().to_string())
 }
-/// 扩展的 GitHub 下载地址（Release 资产）。
-pub const DOWNLOAD_URL: &str =
-    "https://github.com/veyastra2362/Lemma/releases/download/extension-v1/lemma-extension.zip";
+/// 扩展的下载入口。
+///
+/// 指向**最新 Release 页面**而不是某个资产：扩展分了 Chrome/Firefox 两份，
+/// 用户要自己按浏览器挑，直接给一个 zip 反而会装错。
+pub const DOWNLOAD_URL: &str = "https://github.com/veyastra2362/Lemma/releases/latest";
 
 /// 把扩展的三个文件打成一个 zip（用户下载后解压即可加载）。
 ///
