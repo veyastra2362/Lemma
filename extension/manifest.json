@@ -5,6 +5,15 @@
   "description": "把 Lemma 的译文写回网页原文位置。与本地 Lemma 桌面应用通过 Native Messaging 通信。",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAujoimtuPNfcrbBh1eK/AeMyZG9ElBzrZ0QISrHGTbC4SOHv6nkRvY1t5QQolQskNIWRZdHUq8xiGlps/anEnriYS1C4Xj9he+0Bp0k91QgaV3zLGn5kyU399XV/FLAuovaymEj5GrvFgDeM9M71W/8zI6o/pfjjZgcQYD9dmQJVmZdAYgky4UPR+/n4iR/yM5dJ6AP/AajYgvQO3SKT08tYA/Umne2Bvp/Gz5vMOntvvcL+dxBsYKArvBAKAuD1qWroncHgccOgTnR3hv9zevtP2lRba7oOnuvoiBjYezf2oI+sSbgTGlNpVHnAcv066/OXz84jBDP2J7KG5co8rtwIDAQAB",
   "permissions": ["nativeMessaging", "contextMenus", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
   "background": {
     "service_worker": "background.js"
   },
