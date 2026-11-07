@@ -112,7 +112,7 @@ const zhCN = {
   settingsExtensionInstall: "一键安装",
   settingsExtensionInstallAction: "获取扩展（GitHub）",
   settingsExtensionInstalled: "宿主已就绪：扩展目录与浏览器登记都已写入",
-  settingsExtensionMissing: "点右侧按钮：写好本机登记，并打开 GitHub 下载页；下载后解压、在浏览器里加载即可。",
+  settingsExtensionMissing: "点右侧按钮写好本机登记，并打开 GitHub 下载页；下载解压后在浏览器里加载。",
   settingsHudWriteBack: "浮层显示「回填」按钮",
   settingsHudWriteBackHint: "关掉后取词卡片上不出现回填入口，网页里仍可用右键菜单或快捷键。",
   settingsExtensionEnabled: "允许扩展调用 Lemma",

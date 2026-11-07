@@ -863,11 +863,6 @@ export function SettingsView() {
                   onChange={(on) => apply({ extensionWriteBack: on })}
                 />
               </Row>
-              {extension?.dir && (
-                <p className="mt-1 break-all font-mono text-[12px] text-[var(--hud-faint)]">
-                  {extension.dir}
-                </p>
-              )}
               {extension?.installed && (
                 <p className="mt-1 text-[11px] leading-[1.55] text-[var(--hud-muted)]">
                   {t("settingsExtensionSteps")}
