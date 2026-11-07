@@ -46,22 +46,8 @@ pub enum Accent {
 }
 
 /// 双栏阅读窗口的打开方式。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ReaderOpenMode {
-    /// 完全关闭：HUD 不显示入口，热键也不注册。
-    Off,
-    /// 从 HUD 里点按钮打开。
-    Hud,
-    /// 用独立热键打开。
-    Hotkey,
-}
-
 /// 截图识别热键的默认值。
 pub const DEFAULT_OCR_HOTKEY: &str = "Alt+S";
-
-/// 双栏窗口的默认热键（仅在 mode == Hotkey 时注册）。
-pub const DEFAULT_READER_HOTKEY: &str = "Alt+R";
 
 /// 卡片上显示哪些区块。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,10 +141,6 @@ pub struct Settings {
     pub ocr_hotkey_enabled: bool,
     #[serde(default = "default_ocr_hotkey")]
     pub ocr_hotkey: String,
-    #[serde(default = "default_reader_mode")]
-    pub reader_open_mode: ReaderOpenMode,
-    #[serde(default = "default_reader_hotkey")]
-    pub reader_hotkey: String,
     /// 翻译走哪个服务。
     #[serde(default = "default_provider")]
     pub translate_provider: ProviderKind,
@@ -197,21 +179,12 @@ fn default_accent() -> Accent {
     Accent::Clay
 }
 
-fn default_reader_mode() -> ReaderOpenMode {
-    // 功能未定型前默认关闭：对不用它的人不该有任何存在感。
-    ReaderOpenMode::Off
-}
-
 fn default_speech_speed() -> f32 {
     1.0
 }
 
 fn default_ocr_hotkey() -> String {
     DEFAULT_OCR_HOTKEY.to_string()
-}
-
-fn default_reader_hotkey() -> String {
-    DEFAULT_READER_HOTKEY.to_string()
 }
 
 fn default_target_lang() -> Lang {
@@ -244,8 +217,6 @@ impl Default for Settings {
             speak_translation: true,
             ocr_hotkey_enabled: true,
             ocr_hotkey: default_ocr_hotkey(),
-            reader_open_mode: default_reader_mode(),
-            reader_hotkey: default_reader_hotkey(),
             translate_provider: default_provider(),
             target_lang: default_target_lang(),
             openai_base_url: default_base_url(),

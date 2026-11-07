@@ -7,7 +7,6 @@ describe("parseRoute", () => {
     expect(parseRoute("#/shell")).toBe("shell");
     expect(parseRoute("#/settings")).toBe("settings");
     expect(parseRoute("#/ocr-region")).toBe("ocr-region");
-    expect(parseRoute("#/reader")).toBe("reader");
   });
 
   it("容忍没有斜杠、多余斜杠与大小写", () => {

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useHudLifecycle } from "../hooks/useHudLifecycle";
 import { useRuntimeInfo } from "../hooks/useRuntimeInfo";
 import { t, tDeckCollapsed } from "../i18n";
-import { ipc, isTauri, onReaderSmoke } from "../lib/ipc";
+import { ipc, isTauri } from "../lib/ipc";
 import { useAppStore } from "../store/useAppStore";
 import { shouldTranslate, useDeckStore, type Card } from "../store/useDeckStore";
 import type { CardSections, Settings } from "../types";
@@ -104,7 +104,6 @@ function CardView({
   sections,
   onWord,
   collapsed,
-  onOpenReader,
   onSpeak,
   speakOriginal,
   speakTranslation,
@@ -116,8 +115,6 @@ function CardView({
   sections: CardSections | null;
   onWord: (word: string) => void;
   collapsed: boolean;
-  /** 为 null 表示双栏功能关闭，不显示入口。 */
-  onOpenReader: ((text: string) => void) | null;
   /** 为 null 表示朗读不可用（模型未装），不显示入口。 */
   onSpeak: ((text: string) => void) | null;
   /** 是否显示「朗读原文」（设置里可关）。 */
@@ -202,15 +199,7 @@ function CardView({
                   {t("speakTranslation")}
                 </button>
               )}
-            {onOpenReader && (
-              <button
-                type="button"
-                onClick={() => onOpenReader(card.original as string)}
-                className="hud-btn"
-              >
-                {t("readerOpen")}
-              </button>
-            )}
+
           </div>
         </div>
       </div>
@@ -363,7 +352,6 @@ export function ShellView() {
   const push = useDeckStore((state) => state.push);
   const jumpTo = useDeckStore((state) => state.jumpTo);
   const setTranslation = useDeckStore((state) => state.setTranslation);
-  const [readerError, setReaderError] = useState<string | null>(null);
   const [speechReady, setSpeechReady] = useState(false);
   /** 标题栏显示"这条信息从哪来、多快"，取最底层那张卡。 */
   const rootCard = cards[0] ?? null;
@@ -422,31 +410,6 @@ export function ShellView() {
       .catch(() => setSpeechReady(false));
   }, []);
 
-  // 诊断用：Rust 侧发起的 IPC 冒烟，走与点击按钮完全相同的路径。
-  useEffect(() => {
-    if (!isTauri()) {
-      return;
-    }
-    void onReaderSmoke((text) => {
-      void ipc.logFrontend("info", "smoke event received, chars=" + text.length);
-      void ipc
-        .openReader(text, "smoke-ipc")
-        .then(() => {
-          setReaderError(null);
-          void ipc.logFrontend("info", "smoke openReader ok");
-        })
-        .catch((reason: unknown) => {
-          const message = reason instanceof Error ? reason.message : String(reason);
-          setReaderError(message);
-          void ipc.logFrontend("error", "smoke openReader failed: " + message);
-        });
-    }).catch((reason: unknown) => {
-      void ipc.logFrontend(
-        "error",
-        "listen(reader://smoke) failed: " + String(reason),
-      );
-    });
-  }, []);
 
   // 句卡片：一旦出现就去翻译（异步，不挡 HUD 首帧）。
   //
@@ -495,18 +458,6 @@ export function ShellView() {
       });
   };
 
-  const openReader = (text: string) => {
-    if (!isTauri()) {
-      return;
-    }
-    // 失败必须让用户看见：这个功能之前就是被 .catch(() => undefined) 悄悄吞掉的。
-    void ipc
-      .openReader(text, capture?.app ?? "")
-      .then(() => setReaderError(null))
-      .catch((reason: unknown) => {
-        setReaderError(reason instanceof Error ? reason.message : String(reason));
-      });
-  };
 
   const openWord = (word: string) => {
     if (!isTauri()) {
@@ -618,13 +569,7 @@ export function ShellView() {
                   sections={settings?.cardSections ?? null}
                   onWord={openWord}
                   collapsed={index < mounted.length - 1}
-                  onOpenReader={
-                    // 双栏只给**根卡片**的截图结果：payload 只保留最近一次截图，
-                    // 较早的卡片点开就会看到与卡片不符的图（实测踩到过）。
-                    settings?.readerOpenMode !== "off" && card.screenshot && index === 0
-                      ? openReader
-                      : null
-                  }
+
                   onSpeak={speechReady ? speak : null}
                   speakOriginal={settings?.speakOriginal ?? true}
                   speakTranslation={settings?.speakTranslation ?? true}
@@ -643,11 +588,6 @@ export function ShellView() {
             ))}
           </>
         )}
-          {readerError && (
-            <p className="mt-1 rounded border border-red-400/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-300">
-              {t("readerFailed")}：{readerError}
-            </p>
-          )}
         </div>
       </main>
 

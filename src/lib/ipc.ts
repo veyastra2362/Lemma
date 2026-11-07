@@ -5,7 +5,6 @@ import type {
   Capture,
   Entry,
   PaintSample,
-  ReaderContent,
   RuntimeStats,
   ExtensionStatus,
   ModelStatus,
@@ -115,12 +114,7 @@ export const ipc = {
   },
 
   /** 打开双栏窗口并显示这段文本。 */
-  openReader: (text: string, source: string) =>
-    invoke<void>("open_reader", { text, source }),
   /** 双栏窗口拉取内容。 */
-  readerContent: () =>
-    withRetry("reader_content", () => invoke<ReaderContent | null>("reader_content")),
-  closeReader: () => invoke<void>("close_reader"),
   /** 翻译一段文本（走 Rust 的分级路由 + 缓存）。失败会 reject。 */
   translateText: (text: string) =>
     invoke<TranslateResult>("translate_text", { text }),
@@ -137,16 +131,7 @@ export function onHudPresented(
 }
 
 /** 双栏窗口每次被打开时，Rust 会广播这个事件要求重新拉内容。 */
-export function onReaderReload(handler: () => void): Promise<UnlistenFn> {
-  return listen("reader://reload", () => handler());
-}
 
-/** 仅用于诊断：Rust 侧发起的 IPC 冒烟（`LEMMA_READER_SMOKE_IPC`）。 */
-export function onReaderSmoke(
-  handler: (text: string) => void,
-): Promise<UnlistenFn> {
-  return listen<string>("reader://smoke", (event) => handler(event.payload));
-}
 
 /** 监听设置变更（设置窗口改了设置后，HUD 靠这个同步）。 */
 export function onSettingsChanged(

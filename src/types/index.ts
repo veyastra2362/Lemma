@@ -37,31 +37,8 @@ export type TranslateLang = "zh" | "en";
 export type Accent = "clay" | "olive";
 
 /** 双栏窗口的打开方式。 */
-export type ReaderOpenMode = "off" | "hud" | "hotkey";
 
 /** 双栏窗口的内容（块已由 Rust 侧切好）。 */
-/** 带坐标的文本块（图文模式的锚点）。 */
-export interface ReaderBlock {
-  text: string;
-  quad: [number, number][];
-}
-
-export interface ReaderImage {
-  width: number;
-  height: number;
-  pngBase64: string;
-}
-
-export interface ReaderContent {
-  text: string;
-  app: string;
-  /** 纯文本模式的段落块。 */
-  blocks: string[];
-  /** 图文模式的带坐标块；非空时走图文渲染。 */
-  imageBlocks: ReaderBlock[];
-  image: ReaderImage | null;
-}
-
 export interface ModelStatus {
   /** 英汉词库条数（ECDICT）。0 = 没装。 */
   dict: number;
@@ -117,8 +94,6 @@ export interface Settings {
   speakTranslation: boolean;
   ocrHotkeyEnabled: boolean;
   ocrHotkey: string;
-  readerOpenMode: ReaderOpenMode;
-  readerHotkey: string;
   translateProvider: TranslateProvider;
   targetLang: TranslateLang;
   openaiBaseUrl: string;

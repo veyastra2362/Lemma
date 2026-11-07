@@ -35,7 +35,6 @@ const NAV: { key: Category; label: string }[] = [
   { key: "models", label: t("settingsSectionModels") },
   { key: "speech", label: t("settingsSectionSpeech") },
   { key: "ocr", label: t("settingsSectionOcr") },
-  { key: "compare", label: t("settingsSectionReader") },
   { key: "translate", label: t("settingsSectionTranslate") },
   { key: "extension", label: t("settingsSectionExtension") },
   { key: "card", label: t("settingsSectionCard") },
@@ -369,7 +368,7 @@ export function SettingsView() {
     }
     setActive(current);
   }, []);
-  const [recordingTarget, setRecordingTarget] = useState<null | "hud" | "reader" | "ocr">(null);
+  const [recordingTarget, setRecordingTarget] = useState<null | "hud" | "ocr">(null);
   const [models, setModels] = useState<ModelStatus | null>(null);
   const [extension, setExtension] = useState<ExtensionStatus | null>(null);
   const recording = recordingTarget !== null;
@@ -509,9 +508,6 @@ export function SettingsView() {
       if (recordingTarget === "ocr") {
         setRecordingTarget(null);
         apply({ ocrHotkey: combo });
-      } else if (recordingTarget === "reader") {
-        setRecordingTarget(null);
-        apply({ readerHotkey: combo });
       } else {
         setRecordingTarget(null);
         apply({ trigger: "hotkey", hotkey: combo });
@@ -753,28 +749,6 @@ export function SettingsView() {
                   <span>{settings?.ocrHotkey ?? "—"}</span>
                 </span>
                 {recordButton("ocr")}
-              </Row>
-          </section>
-
-          <section id="set-compare" className="mb-7">
-              <h2 className="set-h">{t("settingsSectionReader")}</h2>
-              <p className="set-desc">{t("settingsReaderIntro")}</p>
-              <Row
-                label={t("settingsCompareMode")}
-                hint={
-                  settings?.readerOpenMode === "off"
-                    ? t("settingsReaderOffHint")
-                    : t("settingsReaderHudHint")
-                }
-              >
-                <Dropdown
-                  value={settings?.readerOpenMode === "off" ? "off" : "hud"}
-                  options={[
-                    { value: "hud", label: t("settingsReaderHud") },
-                    { value: "off", label: t("settingsReaderOff") },
-                  ]}
-                  onChange={(next) => apply({ readerOpenMode: next })}
-                />
               </Row>
           </section>
 

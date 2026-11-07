@@ -380,7 +380,6 @@ fn wire_settings_close<R: Runtime>(window: &WebviewWindow<R>) {
 /// WebView 控制器同步一次尺寸并 `webview.show()`。只做前者时，之前被隐藏
 /// 过或尺寸为 0 的 WebView2 会在透明客户区外面留一圈可见边框。
 pub const REGION_LABEL: &str = "ocr-region";
-pub const READER_LABEL: &str = "reader";
 
 /// 显示框选层：**每个显示器一个窗口**。
 ///
@@ -518,81 +517,6 @@ pub fn hide_region_select<R: Runtime>(app: &AppHandle<R>) {
 /// 框选层不再拦 close：用完直接销毁（见 `hide_region_select` 的说明）。
 /// 用户按 Alt+F4 关掉也只是销毁，下次 `Alt+S` 会重建。
 fn wire_region_close<R: Runtime>(_window: &WebviewWindow<R>) {}
-/// 显示双栏窗口。与设置窗口同样的两步显示 + 懒创建。
-pub fn present_reader<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    // 先按配置建；配置因为任何原因拿不到（编译进二进制的 conf 与代码不同步等）时，
-    // 用硬编码参数兜底——双栏是用户点出来的功能，不能因为一个配置项就静默失败。
-    let window = ensure_window(app, READER_LABEL).or_else(|error| {
-        logs::line(format!("reader from config failed: {error}，改用兜底参数"));
-        tauri::WebviewWindowBuilder::new(
-            app,
-            READER_LABEL,
-            tauri::WebviewUrl::App("index.html#/reader".into()),
-        )
-        .title("Lemma 双栏")
-        .inner_size(1020.0, 700.0)
-        .min_inner_size(720.0, 420.0)
-        .transparent(true)
-        .decorations(false)
-        .center()
-        .build()
-        .map_err(|fallback| format!("{error}；兜底也失败：{fallback}"))
-    })?;
-    wire_reader_close(&window);
-
-    window.unminimize().map_err(|e| e.to_string())?;
-    window.show().map_err(|e| e.to_string())?;
-
-    let size = window.inner_size().map_err(|e| e.to_string())?;
-    if size.width > 0 && size.height > 0 {
-        let webview: &tauri::Webview<R> = window.as_ref();
-        webview.set_size(size).map_err(|e| e.to_string())?;
-        webview.show().map_err(|e| e.to_string())?;
-    }
-
-    PlatformWindow::new(window.clone()).force_show();
-    window.set_focus().map_err(|e| e.to_string())?;
-
-    // 窗口是隐藏复用的，不会重新挂载——必须显式通知它重新拉内容，
-    // 否则第二次打开还停在第一次的文本上。
-    let _ = window.emit("reader://reload", ());
-    Ok(())
-}
-
-/// 从任意线程打开双栏窗口。
-pub fn present_reader_on_main<R: Runtime>(app: &AppHandle<R>) {
-    let runner = app.clone();
-    let inner = app.clone();
-    let _ = runner.run_on_main_thread(move || {
-        if let Err(error) = present_reader(&inner) {
-            logs::line(format!("reader present failed: {error}"));
-        }
-    });
-}
-
-fn wire_reader_close<R: Runtime>(window: &WebviewWindow<R>) {
-    static WIRED: AtomicBool = AtomicBool::new(false);
-    if WIRED.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    let win = window.clone();
-    window.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            let _ = win.hide();
-            PlatformWindow::new(win.clone()).force_hide();
-        }
-    });
-}
-
-/// 关掉双栏窗口。
-pub fn close_reader<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(window) = app.get_webview_window(READER_LABEL) {
-        let _ = window.hide();
-        PlatformWindow::new(window).force_hide();
-    }
-}
-
 /// 关掉设置窗口（只隐藏，不退出进程）。
 pub fn close_settings<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(SETTINGS_LABEL) {

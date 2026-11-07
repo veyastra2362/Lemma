@@ -79,9 +79,6 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         }
     }
 
-    // 双栏热键已移除：双栏只从「截图结果」上的按钮进入。
-    // 用热键开一个"取词得到的纯文本双栏"是多余的一条路（HUD 里已经并排显示了原文与译文）。
-    // `reader_hotkey` 字段保留只为兼容旧配置，不再注册任何键。
     if settings.trigger != Trigger::Hotkey {
         logs::line("trigger mode doubleControl");
         return Ok(());

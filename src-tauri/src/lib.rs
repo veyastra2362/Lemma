@@ -77,12 +77,9 @@ pub fn run() {
             commands::speech_ready,
             commands::model_status,
             commands::open_model_dir,
-            commands::open_reader,
             commands::run_region_ocr,
             commands::start_region_select,
             commands::cancel_region_select,
-            commands::reader_content,
-            commands::close_reader,
             commands::resize_hud,
             commands::report_first_paint,
         ])
@@ -352,28 +349,6 @@ pub fn run() {
                         parts[3] as u32,
                     ) {
                         Ok(capture) => {
-                            if std::env::var("LEMMA_REGION_SMOKE_READER").is_ok() {
-                                match shell::present_reader(handle) {
-                                    Ok(()) => logs::line("region smoke reader opened"),
-                                    Err(error) => {
-                                        logs::line(format!("region smoke reader failed: {error}"))
-                                    }
-                                }
-                            }
-                            // 复现"截图后点双栏"这条链路（含 open_reader 的门槛判断）
-                            if std::env::var("LEMMA_READER_AFTER_OCR").is_ok() {
-                                let text = capture.text.clone();
-                                let app = handle.clone();
-                                tauri::async_runtime::spawn(async move {
-                                    let outcome = crate::commands::open_reader(
-                                        app,
-                                        text,
-                                        "smoke".to_string(),
-                                    )
-                                    .await;
-                                    logs::line(format!("open_reader after ocr → {outcome:?}"));
-                                });
-                            }
                             logs::line(format!(
                                 "region smoke ok chars={} text={}",
                                 capture.text.chars().count(),
@@ -384,31 +359,6 @@ pub fn run() {
                     }
                 }
             }
-            // 冒烟入口：带上文本启动即可直接开双栏，不依赖窗口焦点。
-            // 用法：$env:LEMMA_READER_SMOKE="some text"; lemma.exe
-            if let Ok(text) = std::env::var("LEMMA_READER_SMOKE") {
-                crate::core::reader::set_payload(crate::core::reader::ReaderPayload::text_only(
-                    text,
-                    "smoke".to_string(),
-                ));
-                match shell::present_reader(handle) {
-                    Ok(()) => {
-                        logs::line("reader opened (smoke)");
-                        // 让前端自己发起一次朗读，用于验证"分句合成 + 预取"流水线
-                        if std::env::var("LEMMA_SPEAK_STREAM_SMOKE").is_ok() {
-                            let handle = handle.clone();
-                            tauri::async_runtime::spawn(async move {
-                                tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
-                                if let Some(window) = handle.get_webview_window("reader") {
-                                    let _ = window.emit("reader://autospeak", ());
-                                }
-                            });
-                        }
-                    }
-                    Err(error) => logs::line(format!("reader smoke failed: {error}")),
-                }
-            }
-
             logs::line(format!(
                 "startup tray-ready {:.1}ms",
                 app.state::<Perf>().startup_ms()

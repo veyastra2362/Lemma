@@ -19,7 +19,7 @@ pub fn hud_toggle(app: AppHandle) {
     crate::core::shell::toggle(&app);
 }
 
-/// 同 `open_reader`：会创建窗口，必须 async。
+/// 会创建窗口，必须 async。
 #[tauri::command]
 pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     crate::core::shell::present_settings(&app)
@@ -98,8 +98,6 @@ pub fn update_settings(
     let trigger_changed = next.trigger != previous.trigger
         || next.hotkey != previous.hotkey
         || next.capture_mode != previous.capture_mode
-        || next.reader_open_mode != previous.reader_open_mode
-        || next.reader_hotkey != previous.reader_hotkey
         || next.ocr_hotkey_enabled != previous.ocr_hotkey_enabled
         || next.ocr_hotkey != previous.ocr_hotkey;
 
@@ -185,35 +183,6 @@ pub(crate) fn run_region_capture(
     // 耗时必须在 store 之前给定，否则 HUD 读到的是 0ms（踩过一次）
     let capture = crate::core::selection::store_ocr(text.clone(), "截图".to_string(), capture_ms);
 
-    // 同时准备图文 payload：截图 + 每个文本框的坐标。
-    // 这样用户在 HUD 点「双栏」时看到的是原图与译文的对照，而不是一段纯文字。
-    match crate::core::reader::encode_png_base64(&shot.pixels, shot.width, shot.height) {
-        Ok(png) => {
-            let blocks = blocks
-                .iter()
-                .map(|block| crate::core::reader::ReaderBlock {
-                    text: block.text.clone(),
-                    quad: [
-                        (block.quad[0].x, block.quad[0].y),
-                        (block.quad[1].x, block.quad[1].y),
-                        (block.quad[2].x, block.quad[2].y),
-                        (block.quad[3].x, block.quad[3].y),
-                    ],
-                })
-                .collect();
-            crate::core::reader::set_payload(crate::core::reader::ReaderPayload {
-                text,
-                app: "截图".to_string(),
-                blocks,
-                image: Some(crate::core::reader::ReaderImage {
-                    width: shot.width,
-                    height: shot.height,
-                    png_base64: png,
-                }),
-            });
-        }
-        Err(error) => crate::core::logs::line(format!("reader image encode failed: {error}")),
-    }
     crate::core::logs::line(format!(
         "region ocr capture={capture_ms:.0}ms boxes={} chars={}",
         blocks.len(),
@@ -231,74 +200,6 @@ pub fn start_region_select(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn cancel_region_select(app: AppHandle) {
     crate::core::shell::hide_region_select(&app);
-}
-
-/// 打开双栏窗口并显示这段文本（HUD 的「双栏」按钮走这里）。
-/// 打开双栏窗口。
-///
-/// **必须是 async**：同步命令在 Tauri 里跑在主线程上，而这里要创建新窗口——
-/// 创建窗口需要事件循环转起来，主线程正被这条命令占着，于是直接死锁
-/// （表现为 IPC 永不返回、HUD 失去响应、Esc 关不掉）。
-#[tauri::command]
-pub async fn open_reader(app: AppHandle, text: String, source: String) -> Result<(), String> {
-    if text.trim().is_empty() {
-        return Err("没有可对照的文本".to_string());
-    }
-    // 双栏定位为**截图的对照阅读**：一屏文字 + 逐块对照才有意义。
-    // 选一个词/一句话时 HUD 里本来就是原文+译文并排，再开个窗口重复一遍是多余的。
-    let payload = crate::core::reader::payload();
-    let has_image = payload
-        .as_ref()
-        .is_some_and(|payload| payload.image.is_some() && payload.text == text);
-    crate::core::logs::line(format!(
-        "open_reader gate: payload={} image={} text_eq={} req={}B payload_text={}B",
-        payload.is_some(),
-        payload.as_ref().is_some_and(|p| p.image.is_some()),
-        payload.as_ref().is_some_and(|p| p.text == text),
-        text.chars().count(),
-        payload
-            .as_ref()
-            .map(|p| p.text.chars().count())
-            .unwrap_or(0),
-    ));
-    if !has_image {
-        return Err("双栏只用来看截图对照；选词结果直接在 HUD 里看即可".to_string());
-    }
-    let _ = source;
-    match crate::core::shell::present_reader(&app) {
-        Ok(()) => {
-            crate::core::logs::line("reader opened");
-            Ok(())
-        }
-        Err(error) => {
-            crate::core::logs::line(format!("open_reader failed: {error}"));
-            Err(error)
-        }
-    }
-}
-
-/// 双栏窗口启动后拉内容。切块在 Rust 侧做（已有单测），前端只管渲染与译文。
-#[tauri::command]
-pub fn reader_content() -> Option<crate::core::reader::ReaderContent> {
-    let payload = crate::core::reader::payload()?;
-    // 纯文本模式才需要切块；图文模式的块带坐标，直接给前端
-    let blocks = if payload.blocks.is_empty() {
-        crate::core::reader::split_blocks(&payload.text)
-    } else {
-        Vec::new()
-    };
-    Some(crate::core::reader::ReaderContent {
-        blocks,
-        image_blocks: payload.blocks,
-        image: payload.image,
-        text: payload.text,
-        app: payload.app,
-    })
-}
-
-#[tauri::command]
-pub fn close_reader(app: AppHandle) {
-    crate::core::shell::close_reader(&app);
 }
 
 /// 本地模型（OCR / TTS）的安装状态与目录。
@@ -359,7 +260,7 @@ pub fn open_model_dir(app: AppHandle, kind: String) -> Result<(), String> {
 /// 朗读一段中文。
 ///
 /// **必须是 async**：合成一次要几秒，跑在主线程会把整个 UI 冻住
-/// （同 `open_reader` 的死锁教训：事件循环不能被长任务占住）。
+/// （事件循环不能被长任务占住）。
 ///
 /// 模型是懒加载的：第一次调用会把 121 MB 权重读进内存（空载约 242 MB），
 /// 所以只在用户真的点朗读时才付这份成本。

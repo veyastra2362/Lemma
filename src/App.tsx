@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 
 import { ipc, isTauri } from "./lib/ipc";
 import { parseRoute } from "./utils/route";
-import { ReaderView } from "./views/ReaderView";
 import { RegionSelectView } from "./views/RegionSelectView";
 import { SettingsView } from "./views/SettingsView";
 import { ShellView } from "./views/ShellView";
@@ -51,8 +50,6 @@ export default function App() {
       return <SettingsView />;
     case "ocr-region":
       return <RegionSelectView />;
-    case "reader":
-      return <ReaderView />;
     case "shell":
     default:
       return <ShellView />;

@@ -9,7 +9,6 @@ pub mod logs;
 pub mod ocr;
 pub mod paths;
 pub mod perf;
-pub mod reader;
 pub mod segment;
 pub mod selection;
 pub mod settings;
