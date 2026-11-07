@@ -18,9 +18,9 @@
 
 cd tools/onnx-probe
 $env:PAD="0.9"; $env:REC_MAX_WIDTH="640"          # OCR（见下文，这两个参数决定精度）
-cargo run --release -- "D:\Code\Lemma\data\ocr-models" "D:\Code\Lemma\data\ocr-test.png"
+cargo run --release -- "data\ocr-models" "data\ocr-test.png"
 
-cargo run --release --bin tts -- "D:\Code\Lemma\data\tts-models\kokoro-zh-q8.onnx"
+cargo run --release --bin tts -- "data\tts-models\kokoro-zh-q8.onnx"
 ```
 
 ---

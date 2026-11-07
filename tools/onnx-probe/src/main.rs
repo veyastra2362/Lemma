@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = args
         .get(1)
         .cloned()
-        .unwrap_or_else(|| r"D:\Code\Lemma\data\ocr-models".to_string());
+        .unwrap_or_else(|| "data/ocr-models".to_string());
     let image_path = args.get(2).cloned().expect("需要图片路径");
 
     let image = image::open(&image_path)?.to_rgb8();
