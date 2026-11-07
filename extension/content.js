@@ -154,7 +154,10 @@ function toast(text, kind) {
   }, kind === "busy" ? 1500 : 2200);
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+// Firefox/Chrome 的扩展命名空间不同；这个文件只用到 onMessage。
+const api = globalThis.browser ?? globalThis.chrome;
+
+api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "lemma:pick") {
     const info = currentSelectionInfo();
     if (!info) {

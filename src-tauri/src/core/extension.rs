@@ -179,17 +179,44 @@ pub const DOWNLOAD_URL: &str =
 ///
 /// 为什么要打包：Chrome 只能"加载已解压的扩展程序"，让用户从 GitHub 一个个下载
 /// 三个文件太蠢；一个 zip 解压即用。
-pub fn package(out: &std::path::Path) -> Result<u64, String> {
+/// 把扩展打成**两份**：Chrome/Edge 用 `service_worker`，Firefox 用 `background.scripts`。
+///
+/// 为什么必须分开：Firefox 不接受 `background.service_worker`（它的 MV3 用事件页），
+/// Chrome 又不接受 `background.scripts`。同一个 zip 两个浏览器只能有一个能用，
+/// 直接装会报"扩展已损坏"。
+pub fn package_both(dir: &std::path::Path) -> Result<(u64, u64), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("建目录失败：{e}"))?;
+    let chrome = dir.join("lemma-extension-chrome.zip");
+    let firefox = dir.join("lemma-extension-firefox.xpi");
+    let a = write_zip(&chrome, MANIFEST)?;
+    let firefox_manifest = MANIFEST.replace(
+        "\"background\": {\r\n    \"service_worker\": \"background.js\"\r\n  },",
+        "\"background\": {\r\n    \"scripts\": [\"background.js\"]\r\n  },",
+    );
+    let firefox_manifest = if firefox_manifest == MANIFEST {
+        // LF 换行的环境下也要能替换成功
+        MANIFEST.replace(
+            "\"background\": {\n    \"service_worker\": \"background.js\"\n  },",
+            "\"background\": {\n    \"scripts\": [\"background.js\"]\n  },",
+        )
+    } else {
+        firefox_manifest
+    };
+    let b = write_zip(&firefox, &firefox_manifest)?;
+    Ok((a, b))
+}
+
+/// 用指定 manifest 打一个 zip。
+fn write_zip(out: &std::path::Path, manifest: &str) -> Result<u64, String> {
     use std::io::Write;
     use zip::write::SimpleFileOptions;
-
     let mut buffer = std::io::Cursor::new(Vec::new());
     {
         let mut zip = zip::ZipWriter::new(&mut buffer);
         let options =
             SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         for (name, content) in [
-            ("manifest.json", MANIFEST),
+            ("manifest.json", manifest),
             ("background.js", BACKGROUND),
             ("content.js", CONTENT),
         ] {

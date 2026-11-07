@@ -9,6 +9,10 @@
 
 const HOST = "dev.lunar.lemma";
 
+// Firefox 用 browser.*（Promise 式），Chrome MV3 的 api.* 同样返回 Promise。
+// 统一成一个别名，两个浏览器都能 await。
+const api = globalThis.browser ?? globalThis.chrome;
+
 let port = null;
 let retry = 0;
 
@@ -17,7 +21,7 @@ function connect() {
     return port;
   }
   try {
-    port = chrome.runtime.connectNative(HOST);
+    port = api.runtime.connectNative(HOST);
   } catch (error) {
     scheduleReconnect();
     return null;
@@ -34,7 +38,7 @@ function connect() {
 
   port.onDisconnect.addListener(() => {
     port = null;
-    const detail = chrome.runtime.lastError?.message;
+    const detail = api.runtime.lastError?.message;
     if (detail) {
       console.warn("[Lemma] 宿主断开：", detail);
     }
@@ -87,7 +91,7 @@ function callHost(message) {
 async function applyFromApp(id, text) {
   let reply = { id, ok: false, error: "没有活动标签页" };
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await api.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) {
       throw new Error("没有活动标签页");
     }
@@ -108,10 +112,10 @@ async function applyFromApp(id, text) {
 
 async function askTab(tabId, message) {
   try {
-    return await chrome.tabs.sendMessage(tabId, message);
+    return await api.tabs.sendMessage(tabId, message);
   } catch {
-    await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
-    return await chrome.tabs.sendMessage(tabId, message);
+    await api.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+    return await api.tabs.sendMessage(tabId, message);
   }
 }
 
@@ -129,14 +133,14 @@ async function translateAndReplace(tabId) {
 }
 
 function toast(tabId, text, kind) {
-  chrome.tabs.sendMessage(tabId, { type: "lemma:toast", text, kind }).catch(() => {});
+  api.tabs.sendMessage(tabId, { type: "lemma:toast", text, kind }).catch(() => {});
 }
 
-chrome.commands.onCommand.addListener(async (command) => {
+api.commands.onCommand.addListener(async (command) => {
   if (command !== "translate-selection") {
     return;
   }
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
     return;
   }
@@ -149,8 +153,8 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
+api.runtime.onInstalled.addListener(() => {
+  api.contextMenus.create({
     id: "lemma-replace",
     title: "用 Lemma 翻译并回填",
     contexts: ["selection"],
@@ -158,7 +162,7 @@ chrome.runtime.onInstalled.addListener(() => {
   connect();
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+api.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "lemma-replace" || !tab?.id) {
     return;
   }
@@ -172,5 +176,5 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 // service worker 被唤醒时把连接补上
-chrome.runtime.onStartup.addListener(connect);
+api.runtime.onStartup.addListener(connect);
 connect();

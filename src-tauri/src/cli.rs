@@ -1195,15 +1195,16 @@ fn install_extension_cli() {
 }
 /// 把扩展打包成 zip（发 Release 用）。
 fn package_extension_cli(args: &[String]) {
-    let out = args
+    let dir = args
         .get(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("lemma-extension.zip"));
-    match crate::core::extension::package(&out) {
-        Ok(bytes) => println!(
-            "已生成 {}（{:.1} KB）",
-            out.display(),
-            bytes as f64 / 1024.0
+        .unwrap_or_else(|| PathBuf::from("dist"));
+    match crate::core::extension::package_both(&dir) {
+        Ok((chrome, firefox)) => println!(
+            "已生成 {}/lemma-extension-chrome.zip（{:.1} KB）与 lemma-extension-firefox.xpi（{:.1} KB）",
+            dir.display(),
+            chrome as f64 / 1024.0,
+            firefox as f64 / 1024.0
         ),
         Err(error) => println!("失败：{error}"),
     }
