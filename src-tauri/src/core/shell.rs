@@ -110,14 +110,40 @@ static WATCH_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::n
 
 /// 盯着光标：离开浮层超过 `AUTO_HIDE_RADIUS` 就收起。
 ///
-/// 规则刻意保守：
-/// - 弹出后先等 700ms（此时鼠标通常停在刚选中的词上）；
+/// 手感优先，规则只保留必要的保守：
+/// - 弹出后宽限 350ms（鼠标通常停在刚选中的词上，太短会把浮层秒关）；
 /// - 必须"先靠近过再离开"才收——托盘打开的浮层不会因为鼠标本来就在远处而秒关；
-/// - 连续 3 次（约 300ms）判定为远才收，避免手抖/穿边。
+/// - 连续 2 次（约 80ms）判定为远才收：够挡手抖，又不会让人等。
+///
+/// 实测：指针移开 → 收起约 100ms。之前每格 100ms、要连续 3 格，加上 700ms 宽限，
+/// 最坏能到 1 秒多，用户反馈"反应太慢"。
 fn spawn_proximity_watch<R: Runtime>(app: AppHandle<R>) {
+    /// 轮询间隔：40ms 一档，配合 2 格判定 ≈ 80ms 反应。
+    const TICK: std::time::Duration = std::time::Duration::from_millis(40);
+    /// 弹出后的宽限期。
+    const GRACE: std::time::Duration = std::time::Duration::from_millis(350);
+    /// 连续多少格判定为"已经离开"。
+    const FAR_TICKS: u32 = 2;
+
     let generation = WATCH_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(700));
+        std::thread::sleep(GRACE);
+
+        // 浮层位置在本次展示期间不会变，缓存一次就够；
+        // 每格都去问窗口位置是跨进程调用，没必要。
+        let Some(window) = app.get_webview_window(HUD_LABEL) else {
+            return;
+        };
+        let (Ok(origin), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+            return;
+        };
+        let rect = (
+            origin.x as f64,
+            origin.y as f64,
+            size.width as f64,
+            size.height as f64,
+        );
+
         let mut was_near = false;
         let mut far_ticks = 0;
 
@@ -125,20 +151,13 @@ fn spawn_proximity_watch<R: Runtime>(app: AppHandle<R>) {
             if WATCH_GEN.load(Ordering::SeqCst) != generation {
                 return;
             }
-            let Some(window) = app.get_webview_window(HUD_LABEL) else {
-                return;
-            };
             if !window.is_visible().unwrap_or(false) {
                 return;
             }
 
-            if let (Some(cursor), Ok(origin), Ok(size)) = (
-                crate::platform::cursor_position(),
-                window.outer_position(),
-                window.outer_size(),
-            ) {
-                let dx = distance_axis(cursor.x as f64, origin.x as f64, size.width as f64);
-                let dy = distance_axis(cursor.y as f64, origin.y as f64, size.height as f64);
+            if let Some(cursor) = crate::platform::cursor_position() {
+                let dx = distance_axis(cursor.x as f64, rect.0, rect.2);
+                let dy = distance_axis(cursor.y as f64, rect.1, rect.3);
                 let distance = (dx * dx + dy * dy).sqrt();
 
                 if distance <= AUTO_HIDE_RADIUS {
@@ -146,7 +165,7 @@ fn spawn_proximity_watch<R: Runtime>(app: AppHandle<R>) {
                     far_ticks = 0;
                 } else if was_near {
                     far_ticks += 1;
-                    if far_ticks >= 3 {
+                    if far_ticks >= FAR_TICKS {
                         logs::line("hud auto-hide: cursor moved away");
                         hide(&app);
                         return;
@@ -154,7 +173,7 @@ fn spawn_proximity_watch<R: Runtime>(app: AppHandle<R>) {
                 }
             }
 
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            std::thread::sleep(TICK);
         }
     });
 }
